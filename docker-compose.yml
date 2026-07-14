@@ -1,0 +1,37 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: ../docker/Dockerfile.server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server:/app
+      - server_data:/app/data
+      - server_uploads:/app/uploads
+      - server_chroma:/app/chroma_data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/paperforge.db
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      dockerfile: ../docker/Dockerfile.client
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  server_data:
+  server_uploads:
+  server_chroma:
