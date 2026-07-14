@@ -13,13 +13,16 @@ from chromadb.config import Settings as ChromaSettings
 from app.core.config import get_settings
 from app.core.logging import logger
 from app.domain.entities.chunk import Chunk
+from app.domain.entities.metadata_filter import MetadataFilter
 from app.domain.entities.vector_store_result import VectorSearchResult, VectorStoreResult
 from app.domain.repositories.vector_store import VectorStore
+from app.domain.services.collection_manager import CollectionManager
 from app.domain.exceptions import (
     ConnectionFailure,
     VectorInsertError,
     VectorSearchError,
     VectorDeleteError,
+    VectorStoreError,
 )
 
 
@@ -42,8 +45,6 @@ class ChromaVectorStore(VectorStore):
             
             # Use distance metric from settings (ChromaDB uses metadata space config)
             space_metric = settings.vector_store_distance_metric
-            # map distance metric names if necessary
-            # hnsw:space supports "l2", "ip", or "cosine"
             if space_metric not in ("l2", "ip", "cosine"):
                 space_metric = "cosine"
                 
@@ -72,7 +73,6 @@ class ChromaVectorStore(VectorStore):
         metadatas = [chunk.retrieval_metadata for chunk in chunks]
 
         try:
-            # ChromaDB batch upsert
             self._collection.upsert(
                 ids=ids,
                 documents=documents,
@@ -140,9 +140,7 @@ class ChromaVectorStore(VectorStore):
     async def delete_document(self, document_id: str) -> VectorStoreResult:
         start_time = time.perf_counter()
         try:
-            # Retrieve counts before deleting to populate statistics
             count_before = await self.count(document_id)
-            
             self._collection.delete(where={"document_id": document_id})
             duration = (time.perf_counter() - start_time) * 1000.0
             return VectorStoreResult(
@@ -158,25 +156,49 @@ class ChromaVectorStore(VectorStore):
         self,
         query_embedding: list[float],
         top_k: int = 8,
-        filter_document_ids: Optional[list[str]] = None,
-        filter_collection_id: Optional[str] = None,
+        metadata_filter: Optional[MetadataFilter] = None,
         score_threshold: float = 0.3,
     ) -> list[VectorSearchResult]:
         start_time = time.perf_counter()
         where_filter = None
 
-        # Build filters dictionary
+        # Build filters dictionary dynamically using MetadataFilter fields
         filters = []
-        if filter_document_ids:
-            if len(filter_document_ids) == 1:
-                filters.append({"document_id": filter_document_ids[0]})
-            else:
-                filters.append(
-                    {"$or": [{"document_id": doc_id} for doc_id in filter_document_ids]}
-                )
+        if metadata_filter:
+            if metadata_filter.document_ids:
+                if len(metadata_filter.document_ids) == 1:
+                    filters.append({"document_id": metadata_filter.document_ids[0]})
+                else:
+                    filters.append(
+                        {"$or": [{"document_id": doc_id} for doc_id in metadata_filter.document_ids]}
+                    )
 
-        if filter_collection_id:
-            filters.append({"collection_id": filter_collection_id})
+            if metadata_filter.collection_id:
+                filters.append({"collection_id": metadata_filter.collection_id})
+
+            if metadata_filter.workspace_id:
+                filters.append({"workspace_id": metadata_filter.workspace_id})
+
+            if metadata_filter.author:
+                filters.append({"author": metadata_filter.author})
+
+            if metadata_filter.year:
+                filters.append({"year": metadata_filter.year})
+
+            if metadata_filter.paper_type:
+                filters.append({"paper_type": metadata_filter.paper_type})
+
+            if metadata_filter.tags:
+                if len(metadata_filter.tags) == 1:
+                    filters.append({"tag": metadata_filter.tags[0]})
+                else:
+                    filters.append(
+                        {"$or": [{"tag": tag} for tag in metadata_filter.tags]}
+                    )
+
+            if metadata_filter.additional_filters:
+                for k, v in metadata_filter.additional_filters.items():
+                    filters.append({k: v})
 
         if len(filters) == 1:
             where_filter = filters[0]
@@ -229,7 +251,9 @@ class ChromaVectorStore(VectorStore):
             search_results.append(
                 VectorSearchResult(
                     chunk=chunk,
-                    similarity_score=score,
+                    distance=distance,
+                    raw_score=score,
+                    normalized_score=score,
                     document_id=chunk.document_id,
                     chunk_id=chunk_id,
                     metadata=metadata,
@@ -238,11 +262,10 @@ class ChromaVectorStore(VectorStore):
                 )
             )
 
-        return sorted(search_results, key=lambda r: r.similarity_score, reverse=True)
+        return sorted(search_results, key=lambda r: r.normalized_score, reverse=True)
 
     async def health_check(self) -> dict:
         try:
-            # Query diagnostics
             col_list = self._client.list_collections()
             collection_count = len(col_list)
             doc_count = self._collection.count()
@@ -276,3 +299,56 @@ class ChromaVectorStore(VectorStore):
             return self._collection.count()
         except Exception as e:
             raise VectorSearchError(f"ChromaDB count retrieval failure: {e}") from e
+
+
+class ChromaCollectionManager(CollectionManager):
+    """
+    ChromaDB-backed collection manager adapter.
+    """
+
+    def __init__(self):
+        settings = get_settings()
+        try:
+            self._client = chromadb.PersistentClient(
+                path=settings.chroma_persist_dir,
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
+        except Exception as e:
+            raise ConnectionFailure("chromadb", str(e)) from e
+
+    async def create_collection(self, name: str, metadata: Optional[dict] = None) -> None:
+        try:
+            self._client.create_collection(name=name, metadata=metadata)
+        except Exception as e:
+            raise VectorStoreError(f"Failed to create collection '{name}': {e}") from e
+
+    async def delete_collection(self, name: str) -> None:
+        try:
+            self._client.delete_collection(name=name)
+        except Exception as e:
+            raise VectorStoreError(f"Failed to delete collection '{name}': {e}") from e
+
+    async def list_collections(self) -> list[str]:
+        try:
+            cols = self._client.list_collections()
+            return [c.name for c in cols]
+        except Exception as e:
+            raise VectorStoreError(f"Failed to list collections: {e}") from e
+
+    async def collection_exists(self, name: str) -> bool:
+        try:
+            self._client.get_collection(name=name)
+            return True
+        except Exception:
+            return False
+
+    async def get_collection_stats(self, name: str) -> dict:
+        try:
+            col = self._client.get_collection(name=name)
+            return {
+                "name": name,
+                "count": col.count(),
+                "metadata": col.metadata,
+            }
+        except Exception as e:
+            raise VectorStoreError(f"Failed to get collection stats for '{name}': {e}") from e

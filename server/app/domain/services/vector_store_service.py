@@ -12,6 +12,7 @@ from typing import Optional
 from app.core.config import get_settings
 from app.core.logging import logger
 from app.domain.entities.chunk import Chunk
+from app.domain.entities.metadata_filter import MetadataFilter
 from app.domain.entities.vector_store_result import VectorSearchResult, VectorStoreResult
 from app.domain.repositories.vector_store import VectorStore
 from app.domain.exceptions import (
@@ -279,12 +280,11 @@ class VectorStoreService:
         self,
         query_embedding: list[float],
         top_k: Optional[int] = None,
-        filter_document_ids: Optional[list[str]] = None,
-        filter_collection_id: Optional[str] = None,
+        metadata_filter: Optional[MetadataFilter] = None,
         score_threshold: Optional[float] = None,
     ) -> list[VectorSearchResult]:
         """
-        Perform similarities search with query checks and threshold filtering.
+        Perform similarity search with query checks and threshold filtering.
         """
         start_time = time.perf_counter()
         settings = get_settings()
@@ -313,8 +313,7 @@ class VectorStoreService:
             results = await self._vector_store.similarity_search(
                 query_embedding=query_embedding,
                 top_k=search_top_k,
-                filter_document_ids=filter_document_ids,
-                filter_collection_id=filter_collection_id,
+                metadata_filter=metadata_filter,
                 score_threshold=search_threshold,
             )
             

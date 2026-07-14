@@ -17,9 +17,11 @@ class VectorSearchResult:
     """
 
     chunk: Chunk
-    similarity_score: float
-    document_id: str
-    chunk_id: str
+    distance: Optional[float] = None
+    raw_score: Optional[float] = None
+    normalized_score: Optional[float] = None
+    document_id: str = ""
+    chunk_id: str = ""
     metadata: dict = field(default_factory=dict)
     provider: str = "chroma"
     retrieval_time: float = 0.0  # seconds

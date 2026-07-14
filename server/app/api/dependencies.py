@@ -30,6 +30,8 @@ from app.infrastructure.storage.local_file_storage import LocalFileStorage
 from app.application.documents.upload_document import UploadDocumentUseCase
 from app.application.documents.process_document import ProcessDocumentUseCase
 from app.application.chat.send_message import SendMessageUseCase
+from app.domain.services.collection_manager import CollectionManager
+from app.infrastructure.repositories.chroma_vector_store import ChromaCollectionManager
 
 
 # ── Singletons (created once, reused) ───────────────────────────
@@ -46,6 +48,13 @@ def get_vector_store_service() -> VectorStoreService:
     """Singleton vector store service orchestrator."""
     vector_store = get_vector_store()
     return VectorStoreService(vector_store=vector_store)
+
+
+@lru_cache
+def get_collection_manager() -> CollectionManager:
+    """Singleton collection manager."""
+    return ChromaCollectionManager()
+
 
 
 

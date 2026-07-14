@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from app.domain.entities.chunk import Chunk, SearchResult
+from app.domain.entities.metadata_filter import MetadataFilter
 from app.domain.entities.vector_store_result import VectorSearchResult, VectorStoreResult
 
 
@@ -65,8 +66,7 @@ class VectorStore(ABC):
         self,
         query_embedding: list[float],
         top_k: int = 8,
-        filter_document_ids: Optional[list[str]] = None,
-        filter_collection_id: Optional[str] = None,
+        metadata_filter: Optional[MetadataFilter] = None,
         score_threshold: float = 0.3,
     ) -> list[VectorSearchResult]:
         """
@@ -75,8 +75,7 @@ class VectorStore(ABC):
         Args:
             query_embedding: The embedded query vector.
             top_k: Maximum number of results to return.
-            filter_document_ids: Optional list of document IDs to scope search.
-            filter_collection_id: Optional collection ID to scope search.
+            metadata_filter: Extensible query filter parameters.
             score_threshold: Minimum similarity score to include.
 
         Returns:
@@ -111,11 +110,14 @@ class VectorStore(ABC):
         score_threshold: float = 0.3,
     ) -> list[SearchResult]:
         """Bridge method for existing RAGChain similarity search."""
+        metadata_filter = MetadataFilter(
+            document_ids=filter_document_ids,
+            collection_id=filter_collection_id
+        )
         results = await self.similarity_search(
             query_embedding=query_embedding,
             top_k=top_k,
-            filter_document_ids=filter_document_ids,
-            filter_collection_id=filter_collection_id,
+            metadata_filter=metadata_filter,
             score_threshold=score_threshold,
         )
         
@@ -129,7 +131,7 @@ class VectorStore(ABC):
                     parent_content=r.chunk.parent_content,
                     page_number=r.chunk.page_number,
                     section_header=r.chunk.section_header,
-                    score=r.similarity_score,
+                    score=r.normalized_score if r.normalized_score is not None else 0.0,
                     metadata=r.metadata,
                 )
             )
@@ -141,7 +143,4 @@ class VectorStore(ABC):
 
     async def delete_by_collection(self, collection_id: str) -> None:
         """Bridge method for deleting chunks belonging to a collection."""
-        # ChromaDB implementation deletes using metadata filters
-        # To maintain compatibility we keep this as a dummy/legacy call 
-        # or implement it via delete_chunks.
         pass

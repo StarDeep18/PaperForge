@@ -11,6 +11,7 @@ from typing import Optional
 
 from app.core.config import get_settings
 from app.domain.entities.chunk import Chunk
+from app.domain.entities.metadata_filter import MetadataFilter
 from app.domain.entities.vector_store_result import VectorSearchResult, VectorStoreResult
 from app.domain.repositories.vector_store import VectorStore
 from app.domain.services.vector_store_service import VectorStoreService
@@ -94,17 +95,25 @@ class MockVectorStore(VectorStore):
         self,
         query_embedding: list[float],
         top_k: int = 8,
-        filter_document_ids: Optional[list[str]] = None,
-        filter_collection_id: Optional[str] = None,
+        metadata_filter: Optional[MetadataFilter] = None,
         score_threshold: float = 0.3,
     ) -> list[VectorSearchResult]:
         results = []
         for cid, c in self._chunks.items():
-            # Scoping filters
-            if filter_document_ids and c.document_id not in filter_document_ids:
-                continue
-            if filter_collection_id and c.metadata.get("collection_id") != filter_collection_id:
-                continue
+            # Scoping filters via MetadataFilter
+            if metadata_filter:
+                if metadata_filter.document_ids and c.document_id not in metadata_filter.document_ids:
+                    continue
+                if metadata_filter.collection_id and c.metadata.get("collection_id") != metadata_filter.collection_id:
+                    continue
+                if metadata_filter.workspace_id and c.metadata.get("workspace_id") != metadata_filter.workspace_id:
+                    continue
+                if metadata_filter.author and c.metadata.get("author") != metadata_filter.author:
+                    continue
+                if metadata_filter.year and c.metadata.get("year") != metadata_filter.year:
+                    continue
+                if metadata_filter.paper_type and c.metadata.get("paper_type") != metadata_filter.paper_type:
+                    continue
 
             # Calculate cosine score
             score = cosine_similarity(query_embedding, c.embedding)
@@ -114,7 +123,9 @@ class MockVectorStore(VectorStore):
             results.append(
                 VectorSearchResult(
                     chunk=c,
-                    similarity_score=score,
+                    distance=1.0 - score,
+                    raw_score=score,
+                    normalized_score=score,
                     document_id=c.document_id,
                     chunk_id=cid,
                     metadata=c.metadata,
@@ -122,8 +133,8 @@ class MockVectorStore(VectorStore):
                 )
             )
         
-        # Sort by similarity score descending and limit results
-        results.sort(key=lambda r: r.similarity_score, reverse=True)
+        # Sort by score descending and limit results
+        results.sort(key=lambda r: r.normalized_score, reverse=True)
         return results[:top_k]
 
     async def health_check(self) -> dict:
@@ -242,11 +253,12 @@ async def test_similarity_search():
     results = await service.similarity_search(query_embedding=query, top_k=2, score_threshold=0.01)
     
     assert len(results) == 2
-
     assert results[0].chunk_id == "c1"
-    assert math.isclose(results[0].similarity_score, 1.0, rel_tol=1e-5)
+    assert math.isclose(results[0].normalized_score, 1.0, rel_tol=1e-5)
+    assert results[0].raw_score == results[0].normalized_score
+    assert results[0].distance == 0.0
     assert results[1].chunk_id == "c2"
-    assert results[1].similarity_score < 0.8
+    assert results[1].normalized_score < 0.8
 
 
 @pytest.mark.asyncio
@@ -270,7 +282,7 @@ async def test_invalid_similarity_threshold():
 
 @pytest.mark.asyncio
 async def test_metadata_filtering():
-    """Verify scoping queries by document_id and collection_id."""
+    """Verify scoping queries by document_id and collection_id using MetadataFilter."""
     db = MockVectorStore(dimension=768)
     service = VectorStoreService(vector_store=db)
     
@@ -285,7 +297,7 @@ async def test_metadata_filtering():
     # Filter by single document id
     res_doc = await service.similarity_search(
         query_embedding=vec,
-        filter_document_ids=["doc-B"],
+        metadata_filter=MetadataFilter(document_ids=["doc-B"]),
     )
     assert len(res_doc) == 1
     assert res_doc[0].document_id == "doc-B"
@@ -293,7 +305,7 @@ async def test_metadata_filtering():
     # Filter by collection id
     res_coll = await service.similarity_search(
         query_embedding=vec,
-        filter_collection_id="coll-1",
+        metadata_filter=MetadataFilter(collection_id="coll-1"),
     )
     assert len(res_coll) == 2
     assert {r.chunk_id for r in res_coll} == {"c1", "c2"}
