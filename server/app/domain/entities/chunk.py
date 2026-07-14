@@ -30,9 +30,15 @@ class Chunk:
     document_id: str = ""
     content: str = ""
     parent_content: Optional[str] = None  # Larger context window
+    parent_chunk_id: Optional[str] = None  # Added
     page_number: Optional[int] = None
     section_header: Optional[str] = None
     chunk_index: int = 0
+    total_chunks: int = 0  # Added
+    character_start: int = 0  # Added
+    character_end: int = 0  # Added
+    page_relative_start: Optional[int] = None  # Added for page-specific navigation
+    page_relative_end: Optional[int] = None  # Added for page-specific navigation
     token_count: int = 0
     embedding: Optional[list[float]] = None
     metadata: dict = field(default_factory=dict)
@@ -44,11 +50,22 @@ class Chunk:
         meta = {
             "document_id": self.document_id,
             "chunk_index": self.chunk_index,
+            "total_chunks": self.total_chunks,
+            "character_start": self.character_start,
+            "character_end": self.character_end,
+            "created_at": self.created_at.isoformat(),
         }
+        if self.page_relative_start is not None:
+            meta["page_relative_start"] = self.page_relative_start
+        if self.page_relative_end is not None:
+            meta["page_relative_end"] = self.page_relative_end
+        if self.parent_chunk_id:
+            meta["parent_chunk_id"] = self.parent_chunk_id
         if self.page_number is not None:
             meta["page_number"] = self.page_number
         if self.section_header:
             meta["section_header"] = self.section_header
+            meta["section_heading"] = self.section_header  # support both naming conventions
         meta.update(self.metadata)
         return meta
 
@@ -75,3 +92,19 @@ class SearchResult:
     def context_text(self) -> str:
         """Return parent content if available, otherwise chunk content."""
         return self.parent_content or self.content
+
+
+@dataclass
+class ProcessingResult:
+    """
+    Standardized result wrapper for application and domain service operations.
+
+    Provides uniform structures for success flags, duration tracking, warnings,
+    statistics, and output payloads across different services.
+    """
+
+    success: bool
+    duration_ms: float
+    warnings: list[str]
+    statistics: dict
+    payload: list[Chunk]

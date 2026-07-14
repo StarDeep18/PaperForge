@@ -6,6 +6,7 @@ Optimized for academic research papers.
 """
 
 from pathlib import Path
+import re
 from typing import Optional
 
 import fitz  # PyMuPDF
@@ -59,6 +60,20 @@ class PDFParser:
         except Exception as e:
             raise DocumentProcessingError("", f"Failed to open PDF: {e}") from e
 
+        # Handle encrypted PDFs
+        if doc.is_encrypted:
+            success = False
+            try:
+                # authenticate returns > 0 on success, 0 on failure
+                success = doc.authenticate("") > 0
+            except Exception as e:
+                doc.close()
+                raise DocumentProcessingError("", f"Failed to authenticate encrypted PDF: {e}") from e
+
+            if not success:
+                doc.close()
+                raise DocumentProcessingError("", "PDF is encrypted and requires a password")
+
         try:
             # Extract text with page tracking
             text_parts: list[str] = []
@@ -80,7 +95,7 @@ class PDFParser:
             metadata = DocumentMetadata(
                 title=self._clean_metadata_field(pdf_metadata.get("title")),
                 authors=self._parse_authors(pdf_metadata.get("author")),
-                publication_date=self._clean_metadata_field(pdf_metadata.get("creationDate")),
+                publication_date=self._parse_pdf_date(pdf_metadata.get("creationDate")),
                 keywords=self._parse_keywords(pdf_metadata.get("keywords")),
                 page_count=len(doc),
                 word_count=len(full_text.split()),
@@ -118,15 +133,74 @@ class PDFParser:
             cleaned = cleaned[2:]
         return cleaned if cleaned else None
 
+    def _parse_pdf_date(self, date_str: Optional[str]) -> Optional[str]:
+        """
+        Parse a PDF date string (often starting with 'D:') into ISO format 'YYYY-MM-DD'.
+        """
+        if not date_str or not date_str.strip():
+            return None
+
+        cleaned = date_str.strip()
+        if cleaned.startswith("D:"):
+            cleaned = cleaned[2:]
+
+        # If it's already formatted (starts with YYYY-MM or YYYY/MM), return it as is
+        if re.match(r"^\d{4}[-/]\d{2}", cleaned):
+            return cleaned
+
+        # Match starting digits: YYYYMMDD
+        match = re.match(r"^(\d{4})(\d{2})?(\d{2})?", cleaned)
+        if match:
+            year = match.group(1)
+            month = match.group(2)
+            day = match.group(3)
+
+            parts = [year]
+            if month and int(month) in range(1, 13):
+                parts.append(month)
+                if day and int(day) in range(1, 32):
+                    parts.append(day)
+            return "-".join(parts)
+
+        return cleaned if len(cleaned) > 0 else None
+
     def _parse_authors(self, author_str: Optional[str]) -> list[str]:
         """Parse author string into a list of names."""
         if not author_str or not author_str.strip():
             return []
 
-        # Try common separators
-        for sep in [";", " and ", ",", "&"]:
+        # Semicolon is the most reliable separator for multiple authors (e.g. "Doe, John; Smith, Jane")
+        if ";" in author_str:
+            return [a.strip() for a in author_str.split(";") if a.strip()]
+
+        # Check for 'and' and '&'
+        for sep in [" and ", " & "]:
             if sep in author_str:
                 return [a.strip() for a in author_str.split(sep) if a.strip()]
+
+        # Comma-separated parsing with heuristics for Last, First format
+        if "," in author_str:
+            parts = [p.strip() for p in author_str.split(",") if p.strip()]
+
+            # Heuristic for "Last, First" pair format:
+            # e.g., "Doe, John, Smith, Jane" -> 4 parts, all single words.
+            # If all parts are single words and we have an even number of parts,
+            # we combine them into pairs: "John Doe", "Jane Smith".
+            is_last_first_format = (
+                len(parts) > 0
+                and len(parts) % 2 == 0
+                and all(" " not in part for part in parts)
+            )
+
+            if is_last_first_format:
+                combined_authors = []
+                for i in range(0, len(parts), 2):
+                    last = parts[i]
+                    first = parts[i+1]
+                    combined_authors.append(f"{first} {last}")
+                return combined_authors
+            else:
+                return parts
 
         return [author_str.strip()] if author_str.strip() else []
 
@@ -147,18 +221,14 @@ class PDFParser:
 
         Looks for common patterns in academic papers.
         """
-        text_lower = text.lower()
-
-        # Find "abstract" header
-        abstract_start = -1
-        for marker in ["abstract\n", "abstract\r\n", "abstract ", "abstract."]:
-            pos = text_lower.find(marker)
-            if pos != -1:
-                abstract_start = pos + len(marker)
-                break
-
-        if abstract_start == -1:
+        # Search for "Abstract" as a section header at the beginning of a line or paragraph
+        pattern = r"(?:^|\n)\s*\babstract\b[\s.:]*"
+        
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
             return None
+
+        abstract_start = match.end()
 
         # Find the end of abstract (next section header or double newline)
         remaining = text[abstract_start:]
@@ -176,7 +246,6 @@ class PDFParser:
         # Also limit by double newlines (but not too aggressively)
         double_newline_pos = remaining.find("\n\n")
         if double_newline_pos != -1 and double_newline_pos > 100:
-            # Only use double newline if abstract is reasonably long
             abstract_end = min(abstract_end, double_newline_pos)
 
         abstract = remaining[:abstract_end].strip()
@@ -186,32 +255,48 @@ class PDFParser:
         """
         Extract title from the first page using font size heuristics.
 
-        The title is typically the largest text on the first page.
+        The title is typically the largest text on the first page, located
+        in the top 50% of the page.
         """
         if len(doc) == 0:
             return None
 
         page = doc[0]
-        blocks = page.get_text("dict")["blocks"]
+        page_height = page.rect.height
+
+        try:
+            blocks = page.get_text("dict")["blocks"]
+        except Exception:
+            return None
 
         max_size = 0
         title_spans = []
 
         for block in blocks:
+            # Restrict search to blocks in the top 50% of the first page
+            if "bbox" not in block or block["bbox"][3] > page_height * 0.5:
+                continue
+
             if "lines" not in block:
                 continue
+
             for line in block["lines"]:
                 for span in line["spans"]:
                     size = span.get("size", 0)
                     text = span.get("text", "").strip()
-                    if text and size > max_size:
+
+                    if not text:
+                        continue
+
+                    if size > max_size:
                         max_size = size
                         title_spans = [text]
-                    elif text and size == max_size:
+                    elif size == max_size:
                         title_spans.append(text)
 
         if title_spans:
             title = " ".join(title_spans)
+            title = re.sub(r"\s+", " ", title).strip()
             # Sanity check: title shouldn't be too long or too short
             if 5 < len(title) < 300:
                 return title

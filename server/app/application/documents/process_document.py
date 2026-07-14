@@ -90,11 +90,12 @@ class ProcessDocumentUseCase:
             await self._document_repo.update(document)
 
             logger.info(f"Chunking document: {document.id}")
-            chunks = self._chunking_service.chunk_document(
+            chunk_result = self._chunking_service.chunk_document(
                 document_id=document.id,
                 text=parse_result.text,
                 page_breaks=parse_result.page_breaks,
             )
+            chunks = chunk_result.payload
 
             if not chunks:
                 raise DocumentProcessingError(

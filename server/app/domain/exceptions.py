@@ -110,3 +110,51 @@ class RetrievalError(PaperForgeError):
 
     def __init__(self, detail: str):
         super().__init__(f"Retrieval error: {detail}")
+
+
+# ── Chunking Errors ──────────────────────────────────────────────
+
+
+class ChunkingError(PaperForgeError):
+    """Base exception for all chunking-related errors."""
+    pass
+
+
+class EmptyDocumentError(ChunkingError):
+    """Raised when the document text to chunk is empty or whitespace."""
+
+    def __init__(self, document_id: str):
+        super().__init__(
+            f"Failed to chunk document '{document_id}': The document contains no readable text "
+            "or is composed entirely of whitespace. Please verify that document parsing succeeded."
+        )
+
+
+class DocumentTooSmallError(ChunkingError):
+    """Raised when the document text is too small to be chunked."""
+
+    def __init__(self, document_id: str, text_len: int, min_len: int):
+        super().__init__(
+            f"Failed to chunk document '{document_id}': The text content is too small to split "
+            f"({text_len} characters; requires at least {min_len} characters)."
+        )
+
+
+class MalformedParserOutputError(ChunkingError):
+    """Raised when the parser output is malformed (e.g., offsets out of bounds)."""
+
+    def __init__(self, document_id: str, detail: str):
+        super().__init__(
+            f"Failed to chunk document '{document_id}': The parser returned invalid structure or page breaks. "
+            f"Details: {detail}"
+        )
+
+
+class UnsupportedEncodingError(ChunkingError):
+    """Raised when the document text contains unsupported encoding or characters."""
+
+    def __init__(self, document_id: str, detail: str):
+        super().__init__(
+            f"Failed to chunk document '{document_id}': The text content could not be serialized "
+            f"due to encoding issues. Details: {detail}"
+        )
