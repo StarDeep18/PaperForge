@@ -98,6 +98,43 @@ class EmbeddingError(PaperForgeError):
         super().__init__(f"Embedding generation failed: {detail}")
 
 
+class EmbeddingProviderUnavailable(EmbeddingError):
+    """Raised when the embedding provider is unreachable or down."""
+
+    def __init__(self, provider: str, detail: str):
+        super().__init__(f"Provider '{provider}' is unavailable: {detail}")
+        self.provider = provider
+        self.detail = detail
+
+
+class EmbeddingDimensionMismatch(EmbeddingError):
+    """Raised when the returned embedding dimension does not match expectations."""
+
+    def __init__(self, expected: int, actual: int):
+        super().__init__(f"Embedding dimension mismatch: expected {expected}, got {actual}")
+        self.expected = expected
+        self.actual = actual
+
+
+class EmbeddingTimeout(EmbeddingError):
+    """Raised when the embedding request times out."""
+
+    def __init__(self, provider: str, timeout_seconds: float):
+        super().__init__(f"Embedding request to '{provider}' timed out after {timeout_seconds}s")
+        self.provider = provider
+        self.timeout_seconds = timeout_seconds
+
+
+class InvalidEmbeddingResponse(EmbeddingError):
+    """Raised when the response from the embedding API is malformed or empty."""
+
+    def __init__(self, provider: str, detail: str):
+        super().__init__(f"Invalid response from provider '{provider}': {detail}")
+        self.provider = provider
+        self.detail = detail
+
+
+
 class LLMError(PaperForgeError):
     """Raised when the LLM call fails."""
 

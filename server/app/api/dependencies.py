@@ -12,12 +12,16 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user_id
+from app.core.config import get_settings
 from app.infrastructure.database.connection import get_db_session
 from app.infrastructure.repositories.sqlite_document_repo import SQLiteDocumentRepository
 from app.infrastructure.repositories.sqlite_collection_repo import SQLiteCollectionRepository
 from app.infrastructure.repositories.sqlite_conversation_repo import SQLiteConversationRepository
 from app.infrastructure.repositories.chroma_vector_store import ChromaVectorStore
-from app.infrastructure.ai.embedding_provider import EmbeddingProvider
+from app.domain.services.embedding_provider import EmbeddingProvider
+from app.domain.services.embedding_service import EmbeddingService
+from app.infrastructure.ai.gemini_embedding_provider import GeminiEmbeddingProvider
+from app.infrastructure.ai.mock_embedding_provider import MockEmbeddingProvider
 from app.infrastructure.ai.llm_provider import LLMProvider
 from app.infrastructure.ai.rag_chain import RAGChain
 from app.infrastructure.parsing.parser_factory import ParserFactory
@@ -38,8 +42,23 @@ def get_vector_store() -> ChromaVectorStore:
 
 @lru_cache
 def get_embedding_provider() -> EmbeddingProvider:
-    """Singleton embedding provider."""
-    return EmbeddingProvider()
+    """Singleton embedding provider based on configuration."""
+    settings = get_settings()
+    prov = settings.embedding_provider.lower()
+    if prov == "gemini":
+        return GeminiEmbeddingProvider()
+    elif prov == "mock":
+        return MockEmbeddingProvider(dimension=settings.embedding_dimension)
+    else:
+        raise ValueError(f"Unsupported embedding provider: {prov}")
+
+
+@lru_cache
+def get_embedding_service() -> EmbeddingService:
+    """Singleton embedding orchestrator service."""
+    provider = get_embedding_provider()
+    return EmbeddingService(provider=provider)
+
 
 
 @lru_cache
@@ -101,16 +120,17 @@ def get_upload_document_use_case(
 def get_process_document_use_case(
     document_repo: Annotated[SQLiteDocumentRepository, Depends(get_document_repo)],
     vector_store: Annotated[ChromaVectorStore, Depends(get_vector_store)],
-    embedding_provider: Annotated[EmbeddingProvider, Depends(get_embedding_provider)],
+    embedding_service: Annotated[EmbeddingService, Depends(get_embedding_service)],
     parser_factory: Annotated[ParserFactory, Depends(get_parser_factory)],
 ) -> ProcessDocumentUseCase:
     """Process document use case."""
     return ProcessDocumentUseCase(
         document_repo=document_repo,
         vector_store=vector_store,
-        embedding_provider=embedding_provider,
+        embedding_service=embedding_service,
         parser_factory=parser_factory,
     )
+
 
 
 def get_rag_chain(

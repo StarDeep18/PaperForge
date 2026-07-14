@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     llm_model: str = "gemini-2.0-flash"
     embedding_model: str = "text-embedding-004"
+    embedding_provider: str = "gemini"  # "gemini" or "mock"
+    embedding_batch_size: int = 50
+    embedding_timeout: float = 30.0  # seconds
+    embedding_retry_count: int = 3
+    embedding_max_concurrency: int = 5
+    embedding_normalization: bool = True
+    embedding_dimension: int = 768  # text-embedding-004 produces 768-dim vectors
+
 
     # ── Document Processing ──────────────────────────────────────
     max_upload_size_mb: int = 50

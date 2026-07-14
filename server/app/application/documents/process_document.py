@@ -18,7 +18,7 @@ from app.domain.exceptions import DocumentProcessingError
 from app.domain.repositories.document_repository import DocumentRepository
 from app.domain.repositories.vector_store import VectorStore
 from app.domain.services.chunking_service import ChunkingConfig, ChunkingService
-from app.infrastructure.ai.embedding_provider import EmbeddingProvider
+from app.domain.services.embedding_service import EmbeddingService
 from app.infrastructure.parsing.parser_factory import ParserFactory
 
 
@@ -37,13 +37,14 @@ class ProcessDocumentUseCase:
         self,
         document_repo: DocumentRepository,
         vector_store: VectorStore,
-        embedding_provider: EmbeddingProvider,
+        embedding_service: EmbeddingService,
         parser_factory: ParserFactory,
     ):
         self._document_repo = document_repo
         self._vector_store = vector_store
-        self._embedding_provider = embedding_provider
+        self._embedding_service = embedding_service
         self._parser_factory = parser_factory
+
 
         settings = get_settings()
         self._chunking_service = ChunkingService(
@@ -113,21 +114,9 @@ class ProcessDocumentUseCase:
             document.mark_embedding()
             await self._document_repo.update(document)
 
-            logger.info(f"Generating embeddings for {len(chunks)} chunks")
-            chunk_texts = [chunk.content for chunk in chunks]
+            logger.info(f"Generating embeddings for {len(chunks)} chunks using EmbeddingService")
+            await self._embedding_service.embed_chunks(chunks)
 
-            # Batch embeddings (avoid overloading API)
-            batch_size = 50
-            all_embeddings: list[list[float]] = []
-
-            for i in range(0, len(chunk_texts), batch_size):
-                batch = chunk_texts[i : i + batch_size]
-                batch_embeddings = await self._embedding_provider.embed_documents(batch)
-                all_embeddings.extend(batch_embeddings)
-
-            # Assign embeddings to chunks
-            for chunk, embedding in zip(chunks, all_embeddings):
-                chunk.embedding = embedding
 
             # ── Step 4: Store in Vector DB ───────────────────────
             logger.info(f"Storing {len(chunks)} chunks in vector database")
