@@ -16,9 +16,9 @@ from app.core.logging import logger
 from app.domain.entities.document import Document
 from app.domain.exceptions import DocumentProcessingError
 from app.domain.repositories.document_repository import DocumentRepository
-from app.domain.repositories.vector_store import VectorStore
 from app.domain.services.chunking_service import ChunkingConfig, ChunkingService
 from app.domain.services.embedding_service import EmbeddingService
+from app.domain.services.vector_store_service import VectorStoreService
 from app.infrastructure.parsing.parser_factory import ParserFactory
 
 
@@ -36,14 +36,15 @@ class ProcessDocumentUseCase:
     def __init__(
         self,
         document_repo: DocumentRepository,
-        vector_store: VectorStore,
+        vector_store_service: VectorStoreService,
         embedding_service: EmbeddingService,
         parser_factory: ParserFactory,
     ):
         self._document_repo = document_repo
-        self._vector_store = vector_store
+        self._vector_store_service = vector_store_service
         self._embedding_service = embedding_service
         self._parser_factory = parser_factory
+
 
 
         settings = get_settings()
@@ -119,8 +120,9 @@ class ProcessDocumentUseCase:
 
 
             # ── Step 4: Store in Vector DB ───────────────────────
-            logger.info(f"Storing {len(chunks)} chunks in vector database")
-            await self._vector_store.add_chunks(chunks)
+            logger.info(f"Storing {len(chunks)} chunks in vector database using VectorStoreService")
+            await self._vector_store_service.add_chunks(chunks)
+
 
             # ── Step 5: Mark Ready ───────────────────────────────
             document.mark_ready(chunk_count=len(chunks))

@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # ── Vector Database ──────────────────────────────────────────
     chroma_persist_dir: str = "./chroma_data"
     chroma_collection_name: str = "paperforge_chunks"
+    vector_store_batch_size: int = 100
+    vector_store_distance_metric: str = "cosine"  # cosine, l2, or ip
+    vector_store_top_k_default: int = 8
+
 
     # ── Google Gemini ────────────────────────────────────────────
     google_api_key: str = ""

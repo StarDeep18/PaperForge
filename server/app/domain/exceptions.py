@@ -149,6 +149,64 @@ class RetrievalError(PaperForgeError):
         super().__init__(f"Retrieval error: {detail}")
 
 
+# ── Vector Store Errors ──────────────────────────────────────────
+
+
+class VectorStoreError(PaperForgeError):
+    """Base exception for all vector store errors."""
+    pass
+
+
+class CollectionNotFound(VectorStoreError):
+    """Raised when a collection is not found in the vector store."""
+
+    def __init__(self, collection_name: str):
+        super().__init__(f"Collection not found: '{collection_name}'")
+        self.collection_name = collection_name
+
+
+class DuplicateChunk(VectorStoreError):
+    """Raised when trying to insert a chunk with a duplicate ID."""
+
+    def __init__(self, chunk_id: str):
+        super().__init__(f"Duplicate chunk ID detected: {chunk_id}")
+        self.chunk_id = chunk_id
+
+
+class VectorInsertError(VectorStoreError):
+    """Raised when insertion of vectors fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Failed to insert vectors: {detail}")
+        self.detail = detail
+
+
+class VectorSearchError(VectorStoreError):
+    """Raised when vector similarity search fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Failed to search vectors: {detail}")
+        self.detail = detail
+
+
+class VectorDeleteError(VectorStoreError):
+    """Raised when deletion of vectors fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Failed to delete vectors: {detail}")
+        self.detail = detail
+
+
+class ConnectionFailure(VectorStoreError):
+    """Raised when connection to the vector store fails."""
+
+    def __init__(self, provider: str, detail: str):
+        super().__init__(f"Failed to connect to vector store provider '{provider}': {detail}")
+        self.provider = provider
+        self.detail = detail
+
+
+
 # ── Chunking Errors ──────────────────────────────────────────────
 
 

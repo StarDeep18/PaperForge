@@ -20,6 +20,7 @@ from app.infrastructure.repositories.sqlite_conversation_repo import SQLiteConve
 from app.infrastructure.repositories.chroma_vector_store import ChromaVectorStore
 from app.domain.services.embedding_provider import EmbeddingProvider
 from app.domain.services.embedding_service import EmbeddingService
+from app.domain.services.vector_store_service import VectorStoreService
 from app.infrastructure.ai.gemini_embedding_provider import GeminiEmbeddingProvider
 from app.infrastructure.ai.mock_embedding_provider import MockEmbeddingProvider
 from app.infrastructure.ai.llm_provider import LLMProvider
@@ -38,6 +39,14 @@ from app.application.chat.send_message import SendMessageUseCase
 def get_vector_store() -> ChromaVectorStore:
     """Singleton ChromaDB vector store."""
     return ChromaVectorStore()
+
+
+@lru_cache
+def get_vector_store_service() -> VectorStoreService:
+    """Singleton vector store service orchestrator."""
+    vector_store = get_vector_store()
+    return VectorStoreService(vector_store=vector_store)
+
 
 
 @lru_cache
@@ -119,17 +128,18 @@ def get_upload_document_use_case(
 
 def get_process_document_use_case(
     document_repo: Annotated[SQLiteDocumentRepository, Depends(get_document_repo)],
-    vector_store: Annotated[ChromaVectorStore, Depends(get_vector_store)],
+    vector_store_service: Annotated[VectorStoreService, Depends(get_vector_store_service)],
     embedding_service: Annotated[EmbeddingService, Depends(get_embedding_service)],
     parser_factory: Annotated[ParserFactory, Depends(get_parser_factory)],
 ) -> ProcessDocumentUseCase:
     """Process document use case."""
     return ProcessDocumentUseCase(
         document_repo=document_repo,
-        vector_store=vector_store,
+        vector_store_service=vector_store_service,
         embedding_service=embedding_service,
         parser_factory=parser_factory,
     )
+
 
 
 
