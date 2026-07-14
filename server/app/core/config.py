@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     # ── Retrieval ────────────────────────────────────────────────
     top_k_results: int = 8
     similarity_threshold: float = 0.3
+    retrieval_default_top_k: int = 8
+    retrieval_minimum_similarity: float = 0.3
+    retrieval_max_context_tokens: int = 4000
+    retrieval_duplicate_threshold: float = 0.85  # cosine threshold above which chunks are duplicates
+    retrieval_chunk_merge_policy: str = "merge_parent"  # "merge_parent" or "none"
+
 
     @property
     def cors_origin_list(self) -> list[str]:

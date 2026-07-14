@@ -210,7 +210,7 @@ class ChromaVectorStore(VectorStore):
                 query_embeddings=[query_embedding],
                 n_results=top_k,
                 where=where_filter,
-                include=["documents", "metadatas", "distances"],
+                include=["documents", "metadatas", "distances", "embeddings"],
             )
         except Exception as e:
             raise VectorSearchError(f"ChromaDB query search failure: {e}") from e
@@ -244,9 +244,10 @@ class ChromaVectorStore(VectorStore):
                 total_chunks=metadata.get("total_chunks", 0),
                 character_start=metadata.get("character_start", 0),
                 character_end=metadata.get("character_end", 0),
-                embedding=None,
+                embedding=results["embeddings"][0][i] if (results.get("embeddings") and results["embeddings"][0]) else None,
                 metadata=metadata,
             )
+
 
             search_results.append(
                 VectorSearchResult(

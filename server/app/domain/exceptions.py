@@ -143,10 +143,48 @@ class LLMError(PaperForgeError):
 
 
 class RetrievalError(PaperForgeError):
-    """Raised when vector search fails."""
+    """Base exception for all retrieval-related errors."""
 
     def __init__(self, detail: str):
-        super().__init__(f"Retrieval error: {detail}")
+        super().__init__(f"Retrieval failed: {detail}")
+        self.detail = detail
+
+
+class ContextBudgetExceeded(RetrievalError):
+    """Raised when the requested chunks exceed the absolute limits of the context window."""
+
+    def __init__(self, limit: int, requested: int):
+        super().__init__(f"Context budget exceeded: limit is {limit} tokens, requested {requested} tokens.")
+        self.limit = limit
+        self.requested = requested
+
+
+class NoRelevantChunks(RetrievalError):
+    """Raised when no chunks meet the minimum similarity threshold criteria."""
+
+    def __init__(self, query: str, threshold: float):
+        super().__init__(f"No chunks found matching similarity threshold {threshold} for query: '{query}'")
+        self.query = query
+        self.threshold = threshold
+
+
+class InvalidRetrievalRequest(RetrievalError):
+    """Raised when the retrieval request holds invalid or malformed parameters."""
+
+    def __init__(self, parameter: str, detail: str):
+        super().__init__(f"Invalid retrieval request parameter '{parameter}': {detail}")
+        self.parameter = parameter
+        self.detail = detail
+
+
+class QueryEmbeddingFailure(RetrievalError):
+    """Raised when embedding generation for the search query fails."""
+
+    def __init__(self, query: str, detail: str):
+        super().__init__(f"Failed to generate embedding for query '{query}': {detail}")
+        self.query = query
+        self.detail = detail
+
 
 
 # ── Vector Store Errors ──────────────────────────────────────────

@@ -31,7 +31,9 @@ from app.application.documents.upload_document import UploadDocumentUseCase
 from app.application.documents.process_document import ProcessDocumentUseCase
 from app.application.chat.send_message import SendMessageUseCase
 from app.domain.services.collection_manager import CollectionManager
+from app.domain.services.retrieval_service import RetrievalService
 from app.infrastructure.repositories.chroma_vector_store import ChromaCollectionManager
+
 
 
 # ── Singletons (created once, reused) ───────────────────────────
@@ -76,6 +78,18 @@ def get_embedding_service() -> EmbeddingService:
     """Singleton embedding orchestrator service."""
     provider = get_embedding_provider()
     return EmbeddingService(provider=provider)
+
+
+@lru_cache
+def get_retrieval_service() -> RetrievalService:
+    """Singleton retrieval service."""
+    embedding_provider = get_embedding_provider()
+    vector_store_service = get_vector_store_service()
+    return RetrievalService(
+        embedding_provider=embedding_provider,
+        vector_store_service=vector_store_service,
+    )
+
 
 
 
