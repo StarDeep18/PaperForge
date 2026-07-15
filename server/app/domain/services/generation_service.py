@@ -9,11 +9,25 @@ import asyncio
 from typing import Any, Optional
 from app.core.config import get_settings
 from app.core.logging import logger
-from app.domain.entities.generation import GenerationRequest, GenerationResult
+from app.domain.entities.generation import (
+    GenerationRequest,
+    GenerationResult,
+    GenerationMetrics,
+    PromptInspector,
+)
 from app.domain.exceptions import GenerationError, PromptTooLarge
 from app.domain.services.llm_provider import LLMProvider
 from app.domain.services.prompt_builder import PromptBuilder
-from app.domain.services.prompt_template import PromptTemplate, DefaultRAGPromptTemplate
+from app.domain.services.prompt_template import (
+    PromptTemplate,
+    PromptTemplateRegistry,
+    prompt_template_registry,
+)
+from app.domain.services.context_assembler import ContextAssembler
+from app.domain.services.tokenizer_service import (
+    TokenizerService,
+    CharacterLengthTokenizerService,
+)
 from app.domain.services.response_validator import ResponseValidator
 
 
@@ -27,13 +41,31 @@ class GenerationService:
         self,
         provider: LLMProvider,
         response_validator: ResponseValidator,
+        context_assembler: Optional[ContextAssembler] = None,
+        tokenizer: Optional[TokenizerService] = None,
+        registry: Optional[PromptTemplateRegistry] = None,
     ):
         self._provider = provider
         self._response_validator = response_validator
+        self._context_assembler = context_assembler or ContextAssembler()
+        self._tokenizer = tokenizer or CharacterLengthTokenizerService()
+        self._registry = registry or prompt_template_registry
 
     @property
     def provider(self) -> LLMProvider:
         return self._provider
+
+    @property
+    def context_assembler(self) -> ContextAssembler:
+        return self._context_assembler
+
+    @property
+    def tokenizer(self) -> TokenizerService:
+        return self._tokenizer
+
+    @property
+    def registry(self) -> PromptTemplateRegistry:
+        return self._registry
 
     async def generate(
         self,
@@ -48,32 +80,40 @@ class GenerationService:
             template: Optional prompt template override.
 
         Returns:
-            A populated GenerationResult.
+            A populated GenerationResult with nested metrics and prompt inspector details.
         """
         start_time = time.perf_counter()
         settings = get_settings()
         warnings = []
 
-        # ── 1. Select Prompt Template & Builder ──────────────────────
+        # ── 1. Select Prompt Template via Registry ────────────────────
         active_template = template
         if not active_template:
-            # Check generation options for custom templates
             opt_template = request.generation_options.get("template")
             if isinstance(opt_template, PromptTemplate):
                 active_template = opt_template
             else:
-                active_template = DefaultRAGPromptTemplate()
+                template_name = request.generation_options.get("template_name", "default_rag")
+                active_template = self._registry.get(template_name) or self._registry.get("default_rag")
 
-        builder = PromptBuilder(active_template)
+        # ── 2. Prompt Builder Setup ──────────────────────────────────
+        builder = PromptBuilder(
+            template=active_template,
+            context_assembler=self._context_assembler,
+            tokenizer=self._tokenizer,
+        )
 
-        # ── 2. Build Prompts ──────────────────────────────────────────
+        # ── 3. Build Prompts ──────────────────────────────────────────
         system_prompt, user_prompt = builder.build_prompts(
             query=request.user_query,
             retrieval_result=request.retrieval_result,
             history=request.conversation_history,
         )
 
-        # ── 3. Prompt Size Estimation & Validation ───────────────────
+        # ── 4. Token & Context Size Diagnostics ───────────────────────
+        context_str = self._context_assembler.assemble_context(request.retrieval_result)
+        context_size_chars = len(context_str)
+
         prompt_text = system_prompt + user_prompt
         prompt_tokens_est = builder.estimate_tokens(prompt_text)
 
@@ -87,7 +127,7 @@ class GenerationService:
             )
             raise PromptTooLarge(size=prompt_tokens_est, limit=max_prompt_tokens)
 
-        # ── 4. Call LLM Provider with Retries ─────────────────────────
+        # ── 5. Call LLM Provider with Retries ─────────────────────────
         retry_count = request.generation_options.get(
             "retry_count", settings.llm_retry_count
         )
@@ -116,6 +156,7 @@ class GenerationService:
                     chat_history=request.conversation_history,
                     options=options,
                 )
+                retry_attempts_used = attempt
                 break
             except Exception as e:
                 last_error = e
@@ -135,7 +176,7 @@ class GenerationService:
             )
             raise last_error or GenerationError("Generation failed after exhaustion of retries")
 
-        # ── 5. Response Validation ───────────────────────────────────
+        # ── 6. Response Validation ───────────────────────────────────
         required_fields = request.generation_options.get("required_fields")
         try:
             val_warnings = self._response_validator.validate(
@@ -149,31 +190,46 @@ class GenerationService:
             logger.error(f"Response validation failed for response: {e}")
             raise
 
-        # ── 6. Metrics & Unified Generation Result ───────────────────
+        # ── 7. Metrics & Prompt Inspector ────────────────────────────
         duration = time.perf_counter() - start_time
         response_tokens_est = provider_response.response_tokens or builder.estimate_tokens(
             provider_response.response_text
         )
 
+        metrics = GenerationMetrics(
+            duration=duration,
+            prompt_tokens_estimated=prompt_tokens_est,
+            response_tokens_estimated=response_tokens_est,
+            retry_count=retry_attempts_used,
+            context_size_chars=context_size_chars,
+        )
+
+        inspector = PromptInspector(
+            system_instruction=system_prompt,
+            user_prompt=user_prompt,
+            estimated_tokens=prompt_tokens_est,
+            context_size_chars=context_size_chars,
+            template_used=active_template.name,
+            generation_time=duration,
+        )
+
+        # ── 8. Unified Generation Result ─────────────────────────────
         result = GenerationResult(
             response=provider_response.response_text,
             provider=self._provider.provider_name,
             model=self._provider.model_name,
-            duration=duration,
-            prompt_tokens_estimated=prompt_tokens_est,
-            response_tokens_estimated=response_tokens_est,
+            metrics=metrics,
+            inspector=inspector,
             warnings=warnings,
             metadata=provider_response.metadata,
         )
 
-        # ── 7. Structured Logging ─────────────────────────────────────
+        # ── 9. Structured Logging ─────────────────────────────────────
         logger.info(
-            f"Generation layer completed. Provider: '{result.provider}', "
-            f"Model: '{result.model}', Duration: {result.duration:.2f}s, "
-            f"Prompt Tokens: {result.prompt_tokens_estimated}, "
-            f"Response Tokens: {result.response_tokens_estimated}, "
-            f"Retries Used: {retry_attempts_used}, "
-            f"Warnings: {len(result.warnings)}"
+            f"Generation layer completed. Provider: '{result.provider}', Model: '{result.model}', "
+            f"Duration: {metrics.duration:.2f}s, Prompt Tokens: {metrics.prompt_tokens_estimated}, "
+            f"Response Tokens: {metrics.response_tokens_estimated}, Context Size: {metrics.context_size_chars} chars, "
+            f"Retries Used: {metrics.retry_count}, Warnings: {len(result.warnings)}"
         )
 
         return result

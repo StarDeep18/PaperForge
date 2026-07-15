@@ -343,3 +343,42 @@ class UnsupportedEncodingError(ChunkingError):
             f"Failed to chunk document '{document_id}': The text content could not be serialized "
             f"due to encoding issues. Details: {detail}"
         )
+
+
+# ── Citation Errors ──────────────────────────────────────────────
+
+
+class CitationError(PaperForgeError):
+    """Base exception for all citation-related errors."""
+    pass
+
+
+class EvidenceMappingError(CitationError):
+    """Raised when mapping retrieved chunks to evidence reference metadata fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Evidence mapping failed: {detail}")
+        self.detail = detail
+
+
+class CitationFormattingError(CitationError):
+    """Raised when structuring or formatting a citation reference fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Citation formatting failed: {detail}")
+        self.detail = detail
+
+
+class ConfidenceScoringError(CitationError):
+    """Raised when calculating confidence metrics fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Confidence scoring failed: {detail}")
+        self.detail = detail
+
+
+class EmptyEvidence(CitationError):
+    """Raised when citation is requested but the evidence retrieval contains no chunks."""
+
+    def __init__(self):
+        super().__init__("Cannot build citations: retrieved evidence contains no documents or chunks.")

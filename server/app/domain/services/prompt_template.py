@@ -6,6 +6,8 @@ following the abstraction design requested in the architecture review.
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional
+
 
 
 class PromptTemplate(ABC):
@@ -244,3 +246,32 @@ class QuizPromptTemplate(PromptTemplate):
         if query:
             parts.append(f"Quiz topic/options: {query}")
         return "\n\n".join(parts)
+
+
+class PromptTemplateRegistry:
+    """
+    Registry for managing and retrieving PromptTemplates.
+    """
+
+    def __init__(self):
+        self._registry: dict[str, PromptTemplate] = {}
+
+    def register(self, template: PromptTemplate) -> None:
+        """Register a PromptTemplate instance."""
+        self._registry[template.name] = template
+
+    def get(self, name: str) -> Optional[PromptTemplate]:
+        """Retrieve a PromptTemplate by name."""
+        return self._registry.get(name)
+
+
+# ── Global Registry Pre-population ─────────────────────────────
+
+prompt_template_registry = PromptTemplateRegistry()
+prompt_template_registry.register(DefaultRAGPromptTemplate())
+prompt_template_registry.register(SummarizationPromptTemplate())
+prompt_template_registry.register(LiteratureReviewPromptTemplate())
+prompt_template_registry.register(PaperComparisonPromptTemplate())
+prompt_template_registry.register(ResearchGapPromptTemplate())
+prompt_template_registry.register(FlashcardsPromptTemplate())
+prompt_template_registry.register(QuizPromptTemplate())

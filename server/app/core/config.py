@@ -82,6 +82,14 @@ class Settings(BaseSettings):
     retrieval_duplicate_threshold: float = 0.85  # cosine threshold above which chunks are duplicates
     retrieval_chunk_merge_policy: str = "merge_parent"  # "merge_parent" or "none"
 
+    # ── Citation Engine ──────────────────────────────────────────
+    citation_min_confidence: float = 0.3
+    citation_grouping: str = "document"  # "document" or "page"
+    citation_page_merge_policy: str = "consecutive"  # "consecutive" or "none"
+    citation_max_snippet_length: int = 200
+    citation_high_confidence_threshold: float = 0.7
+    citation_medium_confidence_threshold: float = 0.4
+
 
     @property
     def cors_origin_list(self) -> list[str]:

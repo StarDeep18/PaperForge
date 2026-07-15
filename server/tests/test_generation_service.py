@@ -1,8 +1,8 @@
 """
 Unit Tests for Generation Layer.
 
-Tests the PromptBuilder, PromptTemplate, ResponseValidator, LLM Providers,
-and GenerationService orchestration.
+Tests the PromptBuilder, PromptTemplateRegistry, ContextAssembler, TokenizerService,
+ResponseValidator, LLM Providers, and GenerationService orchestration.
 """
 
 import pytest
@@ -20,11 +20,14 @@ from app.domain.exceptions import (
     ResponseValidationFailed,
 )
 from app.domain.services.prompt_template import (
+    PromptTemplateRegistry,
+    prompt_template_registry,
     DefaultRAGPromptTemplate,
     SummarizationPromptTemplate,
     QuizPromptTemplate,
-    FlashcardsPromptTemplate,
 )
+from app.domain.services.context_assembler import ContextAssembler
+from app.domain.services.tokenizer_service import CharacterLengthTokenizerService
 from app.domain.services.prompt_builder import PromptBuilder
 from app.domain.services.response_validator import ResponseValidator
 from app.domain.services.generation_service import GenerationService
@@ -76,50 +79,76 @@ def test_generation_configuration():
     assert settings.llm_provider in ("gemini", "mock")
 
 
-# ── 2. Prompt Construction Tests ─────────────────────────────────────
+# ── 2. Prompt Construction, Assembler, and Tokenizer Tests ───────────
 
 
-def test_prompt_builder_context_assembly(dummy_retrieval_result):
-    """Verify that PromptBuilder correctly extracts parent contents and maps headers."""
-    template = DefaultRAGPromptTemplate()
-    builder = PromptBuilder(template)
-    
-    context = builder.assemble_context(dummy_retrieval_result)
+def test_context_assembler_assembly(dummy_retrieval_result):
+    """Verify that ContextAssembler correctly consolidates parent contents."""
+    assembler = ContextAssembler()
+    context = assembler.assemble_context(dummy_retrieval_result)
     assert "[1] Source: paper-1.pdf, Page 1, Section: Introduction" in context
     assert "Quantum computing uses quantum mechanics to process information" in context
     assert "[2] Source: paper-1.pdf, Page 2, Section: Architecture" in context
     assert "superposition of both" in context
 
 
-def test_prompt_builder_size_estimation():
-    """Verify character-based size estimation heuristics."""
-    builder = PromptBuilder(DefaultRAGPromptTemplate())
-    assert builder.estimate_tokens("") == 0
+def test_tokenizer_service_size_estimation():
+    """Verify tokenizer estimates size accurately based on character heuristics."""
+    tokenizer = CharacterLengthTokenizerService()
+    assert tokenizer.estimate_tokens("") == 0
+    assert tokenizer.estimate_tokens("abcd") == 1
+    assert tokenizer.estimate_tokens("abcdefgh") == 2
+
+
+def test_prompt_builder_integration(dummy_retrieval_result):
+    """Verify that PromptBuilder builds prompts delegating to tokenizer and assembler."""
+    template = DefaultRAGPromptTemplate()
+    assembler = ContextAssembler()
+    tokenizer = CharacterLengthTokenizerService()
+    builder = PromptBuilder(template, assembler, tokenizer)
+    
+    sys_prompt, user_prompt = builder.build_prompts("Query", dummy_retrieval_result)
+    assert "scientific literature review" in sys_prompt
+    assert "Context from retrieved literature" in user_prompt
     assert builder.estimate_tokens("abcd") == 1
-    assert builder.estimate_tokens("abcdefgh") == 2
+
+
+def test_prompt_templates_registry():
+    """Verify PromptTemplateRegistry resolves templates correctly."""
+    registry = prompt_template_registry
+    
+    rag = registry.get("default_rag")
+    assert isinstance(rag, DefaultRAGPromptTemplate)
+    
+    quiz = registry.get("quiz")
+    assert isinstance(quiz, QuizPromptTemplate)
+    
+    none_template = registry.get("non-existent-template-xyz")
+    assert none_template is None
 
 
 def test_prompt_templates_interchangeability(dummy_retrieval_result):
-    """Test that specialized prompt templates structure system instructions and formats correctly."""
-    # Test RAG Template
+    """Test that specialized templates format system instructions and user queries appropriately."""
+    assembler = ContextAssembler()
+    tokenizer = CharacterLengthTokenizerService()
+
+    # RAG Template
     rag_template = DefaultRAGPromptTemplate()
-    rag_builder = PromptBuilder(rag_template)
+    rag_builder = PromptBuilder(rag_template, assembler, tokenizer)
     sys_prompt, user_prompt = rag_builder.build_prompts("Explain qubits", dummy_retrieval_result)
     assert "scientific literature review" in sys_prompt
-    assert "Context from retrieved literature" in user_prompt
     assert "User Query: Explain qubits" in user_prompt
 
-    # Test Summarization Template
+    # Summarization Template
     sum_template = SummarizationPromptTemplate()
-    sum_builder = PromptBuilder(sum_template)
+    sum_builder = PromptBuilder(sum_template, assembler, tokenizer)
     sys_prompt, user_prompt = sum_builder.build_prompts("Summarize details", dummy_retrieval_result)
     assert "scientific summarization" in sys_prompt
     assert "Text to summarize" in user_prompt
-    assert "Summarize details" in user_prompt
 
-    # Test Quiz Template
+    # Quiz Template
     quiz_template = QuizPromptTemplate()
-    quiz_builder = PromptBuilder(quiz_template)
+    quiz_builder = PromptBuilder(quiz_template, assembler, tokenizer)
     sys_prompt, user_prompt = quiz_builder.build_prompts("Make 3 questions", dummy_retrieval_result)
     assert "academic assessor" in sys_prompt
     assert "Quiz topic/options: Make 3 questions" in user_prompt
@@ -223,10 +252,40 @@ async def test_generation_service_success(dummy_retrieval_result):
     assert result.response == "Quantum qubits exist in superposition."
     assert result.provider == "mock"
     assert result.model == "mock-model"
-    assert result.duration > 0.0
-    assert result.prompt_tokens_estimated > 0
-    assert result.response_tokens_estimated > 0
+    
+    # Nested Metrics
+    assert result.metrics.duration > 0.0
+    assert result.metrics.prompt_tokens_estimated > 0
+    assert result.metrics.response_tokens_estimated > 0
+    assert result.metrics.retry_count == 0
+    assert result.metrics.context_size_chars > 0
+
+    # Prompt Inspector
+    assert result.inspector.template_used == "default_rag"
+    assert "Explain qubits" in result.inspector.user_prompt
+    assert "scientific literature review" in result.inspector.system_instruction
+    assert result.inspector.estimated_tokens > 0
+    assert result.inspector.context_size_chars > 0
+    assert result.inspector.generation_time > 0.0
+
     assert len(result.warnings) == 0
+
+
+@pytest.mark.asyncio
+async def test_generation_service_with_template_name_option(dummy_retrieval_result):
+    """Verify that template selection from registry by name options works."""
+    provider = MockLLMProvider(default_response="This is a mock quiz answer.")
+    validator = ResponseValidator()
+    service = GenerationService(provider, validator)
+
+    request = GenerationRequest(
+        user_query="Make a quiz",
+        retrieval_result=dummy_retrieval_result,
+        generation_options={"template_name": "quiz"},
+    )
+    result = await service.generate(request)
+    assert result.inspector.template_used == "quiz"
+    assert "Quiz topic/options: Make a quiz" in result.inspector.user_prompt
 
 
 @pytest.mark.asyncio
