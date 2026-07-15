@@ -42,9 +42,16 @@ class Settings(BaseSettings):
     vector_store_top_k_default: int = 8
 
 
-    # ── Google Gemini ────────────────────────────────────────────
+    # ── Google Gemini & LLM Generation ───────────────────────────
     google_api_key: str = ""
+    llm_provider: str = "gemini"  # "gemini" or "mock"
     llm_model: str = "gemini-2.0-flash"
+    llm_temperature: float = 0.3
+    llm_max_output_tokens: int = 4096
+    llm_timeout: float = 30.0  # seconds
+    llm_retry_count: int = 3
+    llm_max_prompt_tokens: int = 8000
+
     embedding_model: str = "text-embedding-004"
     embedding_provider: str = "gemini"  # "gemini" or "mock"
     embedding_batch_size: int = 50

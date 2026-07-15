@@ -142,6 +142,58 @@ class LLMError(PaperForgeError):
         super().__init__(f"LLM error: {detail}")
 
 
+# ── Generation Errors ───────────────────────────────────────────
+
+
+class GenerationError(PaperForgeError):
+    """Base exception for all generation-related errors."""
+    pass
+
+
+class ProviderUnavailable(GenerationError):
+    """Raised when the LLM provider is unreachable or down."""
+
+    def __init__(self, provider: str, detail: str):
+        super().__init__(f"Provider '{provider}' is unavailable: {detail}")
+        self.provider = provider
+        self.detail = detail
+
+
+class PromptTooLarge(GenerationError):
+    """Raised when the prompt size exceeds limits."""
+
+    def __init__(self, size: int, limit: int):
+        super().__init__(f"Prompt size {size} exceeds limit of {limit}")
+        self.size = size
+        self.limit = limit
+
+
+class EmptyGeneration(GenerationError):
+    """Raised when LLM response is empty."""
+
+    def __init__(self, provider: str, model: str):
+        super().__init__(f"Provider '{provider}' with model '{model}' returned an empty response")
+        self.provider = provider
+        self.model = model
+
+
+class ResponseValidationFailed(GenerationError):
+    """Raised when the generated response fails safety or format validation."""
+
+    def __init__(self, detail: str):
+        super().__init__(f"Response validation failed: {detail}")
+        self.detail = detail
+
+
+class GenerationTimeout(GenerationError):
+    """Raised when the generation request times out."""
+
+    def __init__(self, provider: str, timeout: float):
+        super().__init__(f"Generation request to '{provider}' timed out after {timeout}s")
+        self.provider = provider
+        self.timeout = timeout
+
+
 class RetrievalError(PaperForgeError):
     """Base exception for all retrieval-related errors."""
 
