@@ -42,3 +42,6 @@ httpx>=0.28.0
 
 # Rate Limiting
 slowapi>=0.1.9
+
+# Telemetry
+prometheus-fastapi-instrumentator>=7.0.0

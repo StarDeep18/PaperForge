@@ -26,6 +26,7 @@ class ChatRequest(BaseModel):
     )
 
     model_config = {
+        "strict": True,
         "json_schema_extra": {
             "example": {
                 "query": "What is quantum superposition?",

@@ -104,8 +104,9 @@ def test_documents_upload_unsupported_file_type(mock_pipeline_service):
     
     assert response.status_code == 400
     err_json = response.json()
-    assert err_json["error"] == "UnsupportedFileTypeError"
+    assert err_json["code"] == "UNSUPPORTED_FILE_TYPE"
     assert "xyz" in err_json["message"]
+    assert err_json["request_id"] is not None
     assert err_json["details"] == {"allowed": [".pdf", ".docx", ".txt"]}
 
 
@@ -120,8 +121,9 @@ def test_documents_upload_file_too_large(mock_pipeline_service):
     
     assert response.status_code == 413
     err_json = response.json()
-    assert err_json["error"] == "FileTooLargeError"
+    assert err_json["code"] == "FILE_TOO_LARGE"
     assert "exceeds maximum" in err_json["message"]
+    assert err_json["request_id"] is not None
     assert err_json["details"]["max_bytes"] == 10 * 1024 * 1024
     assert err_json["details"]["size_bytes"] == 100 * 1024 * 1024
 
@@ -203,8 +205,9 @@ def test_get_document_not_found(mock_pipeline_service):
     response = client.get("/api/v1/documents/doc-999")
     assert response.status_code == 404
     err_json = response.json()
-    assert err_json["error"] == "DocumentNotFoundError"
+    assert err_json["code"] == "DOCUMENT_NOT_FOUND"
     assert "Document not found" in err_json["message"]
+    assert err_json["request_id"] is not None
 
 
 def test_delete_document_success(mock_pipeline_service):
@@ -294,8 +297,9 @@ def test_chat_pipeline_failure(mock_pipeline_service):
     response = client.post("/api/v1/chat", json=payload)
     assert response.status_code == 422
     err_json = response.json()
-    assert err_json["error"] == "QuestionAnsweringFailure"
+    assert err_json["code"] == "QUESTION_ANSWERING_FAILED"
     assert "Simulated LLM Timeout" in err_json["message"]
+    assert err_json["request_id"] is not None
 
 
 def test_health_check_success(mock_pipeline_service):
@@ -336,8 +340,9 @@ def test_health_check_failure(mock_pipeline_service):
     response = client.get("/api/v1/health")
     assert response.status_code == 503
     err_json = response.json()
-    assert err_json["error"] == "ProviderHealthFailure"
+    assert err_json["code"] == "PROVIDER_HEALTH_FAILURE"
     assert "unreachable" in err_json["message"]
+    assert err_json["request_id"] is not None
     assert err_json["details"]["vector_store"] == "unhealthy"
 
 
@@ -358,6 +363,7 @@ def test_request_id_tracing(mock_pipeline_service):
     response = client.get("/api/v1/health", headers=headers)
     assert response.status_code == 200
     assert response.headers.get("X-Request-ID") == "test-uuid-999"
+    assert response.headers.get("X-API-Version") == "1.0.0"
 
 
 def test_rate_limiting(mock_pipeline_service):
@@ -382,8 +388,9 @@ def test_rate_limiting(mock_pipeline_service):
         if response.status_code == 429:
             triggered = True
             err_json = response.json()
-            assert err_json["error"] == "RateLimitExceeded"
+            assert err_json["code"] == "RATE_LIMIT_EXCEEDED"
             assert "Too many requests" in err_json["message"]
+            assert err_json["request_id"] is not None
             break
 
     assert triggered, "Expected rate limit (429) to trigger after consecutive requests"
@@ -407,3 +414,42 @@ def test_gzip_compression(mock_pipeline_service):
     response = client.get("/api/v1/health", headers=headers)
     assert response.status_code == 200
     assert response.headers.get("Content-Encoding") == "gzip"
+
+
+def test_security_headers(mock_pipeline_service):
+    """Verify that secure headers are attached to outbound API responses."""
+    mock_pipeline_service.health_check.return_value = {
+        "upload_service": "healthy",
+        "parser": "healthy",
+        "embedding_provider": "healthy",
+        "vector_store": "healthy",
+        "retrieval": "healthy",
+        "generation": "healthy",
+        "citation": "healthy",
+        "overall_status": "healthy",
+    }
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    assert response.headers.get("X-Frame-Options") == "DENY"
+    assert response.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+    assert "geolocation" in response.headers.get("Permissions-Policy", "")
+
+
+def test_prometheus_metrics():
+    """Verify that the Prometheus metrics instrumentation endpoint is exposed."""
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "# HELP" in response.text
+
+
+def test_strict_pydantic_validation():
+    """Verify that sending a type coercion in ChatRequest triggers strict validation failure."""
+    # query is type str. If we send an int (123) under strict=True config, it should fail
+    payload = {
+        "query": 123,  # strict mode forbids int -> str coercion
+    }
+    response = client.post("/api/v1/chat", json=payload)
+    assert response.status_code == 422
+    # Pydantic returns a validation error detailing that input should be a valid string
+    assert "Input should be a valid string" in response.text

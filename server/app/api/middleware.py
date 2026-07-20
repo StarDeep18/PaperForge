@@ -1,7 +1,7 @@
 """
 API Middleware.
 
-Error handling, correlation tracking, and logging wrappers.
+Error handling, correlation tracking, security compliance, and logging wrappers.
 """
 
 import time
@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from app.core.logging import logger, request_id_var
+from app.core.config import get_settings
 from app.domain.exceptions import (
     CollectionNotFoundError,
     ConversationNotFoundError,
@@ -33,15 +34,18 @@ from app.domain.exceptions import (
 
 class ErrorHandlingMiddleware(BaseHTTPMiddleware):
     """
-    Translates domain exceptions to HTTP responses with a consistent JSON structure:
+    Translates domain exceptions to HTTP responses with a consistent Production v2 JSON structure:
     {
-        "error": "ErrorType",
+        "code": "ERROR_CODE",
         "message": "Friendly error message",
+        "request_id": "correlation-request-id",
         "details": ...
     }
     """
 
     async def dispatch(self, request: Request, call_next):
+        req_id = request_id_var.get()
+
         try:
             response = await call_next(request)
             return response
@@ -51,8 +55,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=429,
                 content={
-                    "error": "RateLimitExceeded",
+                    "code": "RATE_LIMIT_EXCEEDED",
                     "message": "Too many requests. Please try again later.",
+                    "request_id": req_id,
                     "details": str(e),
                 },
             )
@@ -62,19 +67,33 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=503,
                 content={
-                    "error": "ProviderHealthFailure",
+                    "code": "PROVIDER_HEALTH_FAILURE",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": e.report,
                 },
             )
 
-        except (DocumentProcessingFailure, QuestionAnsweringFailure) as e:
-            logger.error(f"Pipeline execution failure: {e.message}")
+        except DocumentProcessingFailure as e:
+            logger.error(f"Document processing execution failure: {e.message}")
             return JSONResponse(
                 status_code=422,
                 content={
-                    "error": e.__class__.__name__,
+                    "code": "DOCUMENT_PROCESSING_FAILED",
                     "message": e.message,
+                    "request_id": req_id,
+                    "details": None,
+                },
+            )
+
+        except QuestionAnsweringFailure as e:
+            logger.error(f"Question answering execution failure: {e.message}")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "code": "QUESTION_ANSWERING_FAILED",
+                    "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -84,8 +103,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": "PipelineInitializationFailure",
+                    "code": "PIPELINE_INITIALIZATION_FAILED",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -95,8 +115,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": e.__class__.__name__,
+                    "code": "RAG_PIPELINE_ERROR",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -105,8 +126,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=404,
                 content={
-                    "error": "DocumentNotFoundError",
+                    "code": "DOCUMENT_NOT_FOUND",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -115,8 +137,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=404,
                 content={
-                    "error": "CollectionNotFoundError",
+                    "code": "COLLECTION_NOT_FOUND",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -125,8 +148,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=404,
                 content={
-                    "error": "ConversationNotFoundError",
+                    "code": "CONVERSATION_NOT_FOUND",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -135,8 +159,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": "UnsupportedFileTypeError",
+                    "code": "UNSUPPORTED_FILE_TYPE",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": {"allowed": e.allowed},
                 },
             )
@@ -145,8 +170,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=413,
                 content={
-                    "error": "FileTooLargeError",
+                    "code": "FILE_TOO_LARGE",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": {"max_bytes": e.max_bytes, "size_bytes": e.size_bytes},
                 },
             )
@@ -156,19 +182,45 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=422,
                 content={
-                    "error": "DocumentProcessingError",
+                    "code": "DOCUMENT_PROCESSING_FAILED",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
 
-        except (EmbeddingError, LLMError, RetrievalError) as e:
-            logger.error(f"AI error: {e.message}")
+        except EmbeddingError as e:
+            logger.error(f"Embedding error: {e.message}")
             return JSONResponse(
                 status_code=503,
                 content={
-                    "error": e.__class__.__name__,
-                    "message": "AI service temporarily unavailable. Please try again.",
+                    "code": "EMBEDDING_PROVIDER_FAILED",
+                    "message": "AI embedding service temporarily unavailable. Please try again.",
+                    "request_id": req_id,
+                    "details": {"reason": e.message},
+                },
+            )
+
+        except LLMError as e:
+            logger.error(f"LLM error: {e.message}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "code": "LLM_PROVIDER_FAILED",
+                    "message": "AI generation service temporarily unavailable. Please try again.",
+                    "request_id": req_id,
+                    "details": {"reason": e.message},
+                },
+            )
+
+        except RetrievalError as e:
+            logger.error(f"Retrieval error: {e.message}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "code": "RETRIEVAL_FAILED",
+                    "message": "AI retrieval service temporarily unavailable. Please try again.",
+                    "request_id": req_id,
                     "details": {"reason": e.message},
                 },
             )
@@ -178,8 +230,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": e.__class__.__name__,
+                    "code": "DOMAIN_ERROR",
                     "message": e.message,
+                    "request_id": req_id,
                     "details": None,
                 },
             )
@@ -189,8 +242,9 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": "InternalServerError",
+                    "code": "INTERNAL_SERVER_ERROR",
                     "message": "An internal error occurred. Please try again.",
+                    "request_id": req_id,
                     "details": str(e),
                 },
             )
@@ -199,7 +253,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """
     Generates, reads, and writes correlation Request IDs to X-Request-ID headers,
-    propagating the ID into logging contexts.
+    propagating the ID into logging contexts. Also injects API Version headers.
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -213,10 +267,26 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             # 4. Inject X-Request-ID header into outgoing response
             response.headers["X-Request-ID"] = req_id
+            # 5. Inject API version header
+            response.headers["X-API-Version"] = get_settings().app_version
             return response
         finally:
-            # 5. Clean up thread-local context
+            # 6. Clean up thread-local context
             request_id_var.reset(token)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Appends recommended security headers to all outbound responses.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
 
 
 class RequestLoggingAndTimingMiddleware(BaseHTTPMiddleware):
@@ -243,5 +313,6 @@ class RequestLoggingAndTimingMiddleware(BaseHTTPMiddleware):
                 f"│ Duration: {duration:.2f}ms │ Error: {str(e)}"
             )
             raise
+
 
 

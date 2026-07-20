@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 from app.api.middleware import (
     ErrorHandlingMiddleware,
     RequestIDMiddleware,
+    SecurityHeadersMiddleware,
     RequestLoggingAndTimingMiddleware,
 )
 from app.infrastructure.database.connection import engine
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestLoggingAndTimingMiddleware)
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(ErrorHandlingMiddleware)
 
@@ -114,11 +116,13 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RateLimitExceeded)
     async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        from app.core.logging import request_id_var
         return JSONResponse(
             status_code=429,
             content={
-                "error": "RateLimitExceeded",
+                "code": "RATE_LIMIT_EXCEEDED",
                 "message": "Too many requests. Please try again later.",
+                "request_id": request_id_var.get(),
                 "details": str(exc),
             },
         )
@@ -132,8 +136,12 @@ def create_app() -> FastAPI:
         return {
             "status": "healthy",
             "app": settings.app_name,
-            "version": "0.1.0",
+            "version": settings.app_version,
         }
+
+    # ── Prometheus Metrics ───────────────────────────────────
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, include_in_schema=False, tags=["System"])
 
     return app
 

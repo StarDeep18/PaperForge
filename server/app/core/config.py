@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # ── Application ──────────────────────────────────────────────
     app_name: str = "PaperForge"
+    app_version: str = "1.0.0"
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "dev-secret-key-change-in-production"
