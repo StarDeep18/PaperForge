@@ -1,5 +1,5 @@
 """
-API v1 Workspaces Router.
+API Workspace Router.
 """
 
 from fastapi import APIRouter

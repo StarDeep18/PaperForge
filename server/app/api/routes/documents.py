@@ -1,5 +1,5 @@
 """
-API v1 Documents Router.
+API Documents Router.
 """
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
@@ -7,7 +7,7 @@ from typing import Optional, List
 
 from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
 from app.application.services.rag_pipeline_service import RAGPipelineService
-from app.api.v1.models.responses import DocumentResponse, UploadResponse, DocumentMetadataResponse
+from app.api.schemas.responses import DocumentResponse, UploadResponse, DocumentMetadataResponse
 from app.domain.entities.document import Document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])

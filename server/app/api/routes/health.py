@@ -1,12 +1,12 @@
 """
-API v1 Health Router.
+API Health Router.
 """
 
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_rag_pipeline_service
 from app.application.services.rag_pipeline_service import RAGPipelineService
-from app.api.v1.models.responses import HealthResponse
+from app.api.schemas.responses import HealthResponse
 
 router = APIRouter(prefix="/health", tags=["System"])
 

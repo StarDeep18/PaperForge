@@ -1,5 +1,5 @@
 """
-API v1 Request Models.
+API Request Models.
 """
 
 from pydantic import BaseModel, Field, field_validator

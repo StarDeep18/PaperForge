@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import logger
-from app.api.v1.router import api_v1_router
+from app.api.router import api_router
 from app.api.middleware import ErrorHandlingMiddleware
 from app.infrastructure.database.connection import engine
 from app.infrastructure.database.models import Base
@@ -99,7 +99,7 @@ def create_app() -> FastAPI:
     app.add_middleware(ErrorHandlingMiddleware)
 
     # ── Routers ──────────────────────────────────────────────
-    app.include_router(api_v1_router)
+    app.include_router(api_router)
 
     # ── Health Check ─────────────────────────────────────────
     @app.get("/health", tags=["System"])

@@ -1,13 +1,13 @@
 """
-API v1 Chat Router.
+API Chat Router.
 """
 
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
 from app.application.services.rag_pipeline_service import RAGPipelineService
-from app.api.v1.models.requests import ChatRequest
-from app.api.v1.models.responses import (
+from app.api.schemas.requests import ChatRequest
+from app.api.schemas.responses import (
     ChatResponse,
     CitationResponse,
     EvidenceNodeResponse,

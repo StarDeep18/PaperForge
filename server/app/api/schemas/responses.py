@@ -1,9 +1,9 @@
 """
-API v1 Response Models.
+API Response Models.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, List
 from datetime import datetime
 
 
