@@ -39,6 +39,7 @@ def mock_pipeline_service():
     service.answer_question = AsyncMock()
     service.health_check = AsyncMock()
     service.list_documents = AsyncMock()
+    service.count_documents = AsyncMock()
     service.get_document = AsyncMock()
     service.delete_document = AsyncMock()
     return service
@@ -151,10 +152,17 @@ def test_list_documents(mock_pipeline_service):
         chunk_count=22,
     )
     mock_pipeline_service.list_documents.return_value = [doc]
+    mock_pipeline_service.count_documents.return_value = 1
 
     response = client.get("/api/v1/documents")
     assert response.status_code == 200
-    docs = response.json()
+    res_json = response.json()
+    assert res_json["total"] == 1
+    assert res_json["page"] == 1
+    assert res_json["size"] == 20
+    assert res_json["pages"] == 1
+
+    docs = res_json["items"]
     assert isinstance(docs, list)
     assert len(docs) == 1
     assert docs[0]["id"] == "doc-777"
@@ -331,3 +339,71 @@ def test_health_check_failure(mock_pipeline_service):
     assert err_json["error"] == "ProviderHealthFailure"
     assert "unreachable" in err_json["message"]
     assert err_json["details"]["vector_store"] == "unhealthy"
+
+
+def test_request_id_tracing(mock_pipeline_service):
+    """Verify that incoming X-Request-ID headers are traced and returned in responses."""
+    mock_pipeline_service.health_check.return_value = {
+        "upload_service": "healthy",
+        "parser": "healthy",
+        "embedding_provider": "healthy",
+        "vector_store": "healthy",
+        "retrieval": "healthy",
+        "generation": "healthy",
+        "citation": "healthy",
+        "overall_status": "healthy",
+    }
+
+    headers = {"X-Request-ID": "test-uuid-999"}
+    response = client.get("/api/v1/health", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("X-Request-ID") == "test-uuid-999"
+
+
+def test_rate_limiting(mock_pipeline_service):
+    """Verify that exceeding rate limits returns HTTP 429 in consistent JSON structure."""
+    mock_pipeline_service.answer_question.return_value = RAGResponse(
+        answer="Quantum states",
+        citations=[],
+        confidence="High",
+        evidence_graph=EvidenceGraph(nodes=[]),
+        retrieval_result=None,
+        generation_metrics=None,
+        prompt_inspector=None,
+        warnings=[],
+    )
+    payload = {"query": "test query"}
+
+    # We send consecutive requests. In our route, limiter is configured at 5/minute.
+    # By the 6th query, it must trigger 429 RateLimitExceeded.
+    triggered = False
+    for _ in range(10):
+        response = client.post("/api/v1/chat", json=payload)
+        if response.status_code == 429:
+            triggered = True
+            err_json = response.json()
+            assert err_json["error"] == "RateLimitExceeded"
+            assert "Too many requests" in err_json["message"]
+            break
+
+    assert triggered, "Expected rate limit (429) to trigger after consecutive requests"
+
+
+def test_gzip_compression(mock_pipeline_service):
+    """Verify that requesting gzip encoding compresses response payload exceeding minimum size."""
+    large_report = {
+        "upload_service": "healthy",
+        "parser": "healthy",
+        "embedding_provider": "healthy",
+        "vector_store": "healthy",
+        "retrieval": "healthy",
+        "generation": "healthy",
+        "citation": "healthy",
+        "overall_status": "healthy" + "A" * 1500,  # Enforce minimum size requirement of 1000 bytes
+    }
+    mock_pipeline_service.health_check.return_value = large_report
+
+    headers = {"Accept-Encoding": "gzip"}
+    response = client.get("/api/v1/health", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("Content-Encoding") == "gzip"

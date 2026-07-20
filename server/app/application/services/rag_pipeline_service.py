@@ -429,3 +429,14 @@ class RAGPipelineService:
 
         # 3. Delete DB record
         await self._document_repo.delete(document_id, user_id)
+
+    async def count_documents(
+        self,
+        user_id: str,
+        collection_id: Optional[str] = None,
+    ) -> int:
+        """
+        Returns total count of documents for a user.
+        """
+        return await self._document_repo.count(user_id=user_id, collection_id=collection_id)
+

@@ -1,15 +1,17 @@
 """
 API Middleware.
 
-Error handling middleware that translates domain exceptions
-into appropriate HTTP responses.
+Error handling, correlation tracking, and logging wrappers.
 """
 
+import time
+import uuid
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi.errors import RateLimitExceeded
 
-from app.core.logging import logger
+from app.core.logging import logger, request_id_var
 from app.domain.exceptions import (
     CollectionNotFoundError,
     ConversationNotFoundError,
@@ -43,6 +45,17 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             return response
+
+        except RateLimitExceeded as e:
+            logger.warning(f"Rate limit exceeded: {str(e)}")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "RateLimitExceeded",
+                    "message": "Too many requests. Please try again later.",
+                    "details": str(e),
+                },
+            )
 
         except ProviderHealthFailure as e:
             logger.error(f"Health check failed: {e.message}")
@@ -181,4 +194,54 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
                     "details": str(e),
                 },
             )
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """
+    Generates, reads, and writes correlation Request IDs to X-Request-ID headers,
+    propagating the ID into logging contexts.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        # 1. Fetch or generate X-Request-ID
+        req_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+
+        # 2. Set context variable for logging
+        token = request_id_var.set(req_id)
+        try:
+            # 3. Process request
+            response = await call_next(request)
+            # 4. Inject X-Request-ID header into outgoing response
+            response.headers["X-Request-ID"] = req_id
+            return response
+        finally:
+            # 5. Clean up thread-local context
+            request_id_var.reset(token)
+
+
+class RequestLoggingAndTimingMiddleware(BaseHTTPMiddleware):
+    """
+    Logs incoming request details and tracks endpoint processing latency.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.perf_counter()
+        logger.info(f"Incoming request: {request.method} {request.url.path}")
+
+        try:
+            response = await call_next(request)
+            duration = (time.perf_counter() - start_time) * 1000.0
+            logger.info(
+                f"Request completed: {request.method} {request.url.path} "
+                f"│ Status: {response.status_code} │ Duration: {duration:.2f}ms"
+            )
+            return response
+        except Exception as e:
+            duration = (time.perf_counter() - start_time) * 1000.0
+            logger.error(
+                f"Request crashed: {request.method} {request.url.path} "
+                f"│ Duration: {duration:.2f}ms │ Error: {str(e)}"
+            )
+            raise
+
 

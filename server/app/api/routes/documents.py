@@ -2,13 +2,15 @@
 API Documents Router.
 """
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
+import asyncio
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Request, Query
 from typing import Optional, List
 
 from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
 from app.application.services.rag_pipeline_service import RAGPipelineService
-from app.api.schemas.responses import DocumentResponse, UploadResponse, DocumentMetadataResponse
+from app.api.schemas.responses import DocumentResponse, UploadResponse, DocumentMetadataResponse, PaginatedDocumentResponse
 from app.domain.entities.document import Document
+from app.api.limiter import limiter
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -48,8 +50,10 @@ def _map_document_to_response(doc: Document) -> DocumentResponse:
     summary="Upload and process documents",
     description="Synchronously uploads, parses, chunks, embeds, and stores one or more research papers (PDF, DOCX, TXT) in the vector database.",
 )
+@limiter.limit("20/minute")
 async def upload_documents(
     user_id: CurrentUserId,
+    request: Request,
     files: List[UploadFile] = File(..., description="The files to upload and process."),
     collection_id: Optional[str] = Form(None, description="Optional collection ID scoping."),
     pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
@@ -86,24 +90,43 @@ async def upload_documents(
 
 @router.get(
     "",
-    response_model=List[DocumentResponse],
+    response_model=PaginatedDocumentResponse,
     summary="List uploaded documents",
-    description="Returns a list of all documents uploaded by the current user.",
+    description="Returns a paginated list of all documents uploaded by the current user.",
 )
 async def list_documents(
     user_id: CurrentUserId,
     collection_id: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(20, ge=1, le=100, description="Page size"),
     pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
 ):
-    documents = await pipeline_service.list_documents(
+    limit = size
+    offset = (page - 1) * size
+
+    # Retrieve documents and count in parallel using asyncio.gather
+    documents_task = pipeline_service.list_documents(
         user_id=user_id,
         collection_id=collection_id,
         limit=limit,
         offset=offset,
     )
-    return [_map_document_to_response(doc) for doc in documents]
+    count_task = pipeline_service.count_documents(
+        user_id=user_id,
+        collection_id=collection_id,
+    )
+
+    documents, total = await asyncio.gather(documents_task, count_task)
+    pages = (total + size - 1) // size
+    items = [_map_document_to_response(doc) for doc in documents]
+
+    return PaginatedDocumentResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=pages,
+    )
 
 
 @router.get(
@@ -134,3 +157,4 @@ async def delete_document(
 ):
     await pipeline_service.delete_document(document_id, user_id)
     return None
+

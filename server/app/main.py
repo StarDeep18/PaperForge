@@ -11,13 +11,21 @@ Creates and configures the FastAPI application instance with:
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import logger
 from app.api.router import api_router
-from app.api.middleware import ErrorHandlingMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from app.api.limiter import limiter
+from slowapi.errors import RateLimitExceeded
+from app.api.middleware import (
+    ErrorHandlingMiddleware,
+    RequestIDMiddleware,
+    RequestLoggingAndTimingMiddleware,
+)
 from app.infrastructure.database.connection import engine
 from app.infrastructure.database.models import Base
 
@@ -96,7 +104,24 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLoggingAndTimingMiddleware)
+    app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(ErrorHandlingMiddleware)
+
+    # Rate Limiting State & Custom Exception Handler
+    app.state.limiter = limiter
+
+    @app.exception_handler(RateLimitExceeded)
+    async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "RateLimitExceeded",
+                "message": "Too many requests. Please try again later.",
+                "details": str(exc),
+            },
+        )
 
     # ── Routers ──────────────────────────────────────────────
     app.include_router(api_router)

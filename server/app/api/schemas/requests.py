@@ -25,6 +25,26 @@ class ChatRequest(BaseModel):
         description="Custom parameters for generation service (e.g. temperature, template_name)."
     )
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "query": "What is quantum superposition?",
+                "workspace_id": "workspace-123",
+                "conversation_history": [
+                    {"role": "user", "content": "Explain quantum states."},
+                    {"role": "assistant", "content": "Sure! I can explain concepts like superposition or entanglement."}
+                ],
+                "retrieval_options": {
+                    "top_k": 3,
+                    "score_threshold": 0.5
+                },
+                "generation_options": {
+                    "temperature": 0.3
+                }
+            }
+        }
+    }
+
     @field_validator("query")
     @classmethod
     def validate_query_not_empty(cls, v: str) -> str:

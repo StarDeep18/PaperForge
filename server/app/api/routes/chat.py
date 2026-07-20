@@ -1,8 +1,4 @@
-"""
-API Chat Router.
-"""
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
 from app.application.services.rag_pipeline_service import RAGPipelineService
@@ -14,6 +10,7 @@ from app.api.schemas.responses import (
     EvidenceGraphResponse,
 )
 from app.domain.entities.rag import RAGRequest
+from app.api.limiter import limiter
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -24,18 +21,20 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
     summary="Send a message",
     description="Submits a user query to the RAG pipeline to generate a citation-aware grounded response.",
 )
+@limiter.limit("5/minute")
 async def send_message(
-    request: ChatRequest,
+    chat_request: ChatRequest,
+    request: Request,
     user_id: CurrentUserId,
     pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
 ):
     # Convert ChatRequest to RAGRequest domain model
     rag_request = RAGRequest(
-        query=request.query,
-        workspace_id=request.workspace_id,
-        conversation_history=request.conversation_history,
-        retrieval_options=request.retrieval_options,
-        generation_options=request.generation_options,
+        query=chat_request.query,
+        workspace_id=chat_request.workspace_id,
+        conversation_history=chat_request.conversation_history,
+        retrieval_options=chat_request.retrieval_options,
+        generation_options=chat_request.generation_options,
     )
 
     # Call the application pipeline service
