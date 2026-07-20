@@ -6,6 +6,7 @@ from app.domain.entities.metadata_filter import MetadataFilter
 from app.domain.entities.retrieval import RetrievalRequest, ContextWindow, RetrievalInspector, RetrievalResult
 from app.domain.entities.generation import GenerationRequest, GenerationResult, ProviderResponse, GenerationMetrics, PromptInspector
 from app.domain.entities.citation import Citation, EvidenceReference, EvidenceNode, EvidenceGraph, CitationResult
+from app.domain.entities.rag import DocumentProcessingResult, RAGRequest, RAGResponse
 
 __all__ = [
     "EmbeddingResult",
@@ -26,4 +27,7 @@ __all__ = [
     "EvidenceNode",
     "EvidenceGraph",
     "CitationResult",
+    "DocumentProcessingResult",
+    "RAGRequest",
+    "RAGResponse",
 ]

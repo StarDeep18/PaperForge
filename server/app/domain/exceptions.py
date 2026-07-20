@@ -382,3 +382,35 @@ class EmptyEvidence(CitationError):
 
     def __init__(self):
         super().__init__("Cannot build citations: retrieved evidence contains no documents or chunks.")
+
+
+# ── RAG Pipeline Errors ──────────────────────────────────────────
+
+
+class RAGPipelineError(PaperForgeError):
+    """Base exception for all RAG pipeline orchestration errors."""
+    pass
+
+
+class DocumentProcessingFailure(RAGPipelineError):
+    """Raised when document ingestion processing pipeline fails."""
+    pass
+
+
+class QuestionAnsweringFailure(RAGPipelineError):
+    """Raised when question answering pipeline fails."""
+    pass
+
+
+class PipelineInitializationFailure(RAGPipelineError):
+    """Raised when pipeline initialization fails (e.g. invalid dependencies)."""
+    pass
+
+
+class ProviderHealthFailure(RAGPipelineError):
+    """Raised when provider health check fails."""
+
+    def __init__(self, message: str, report: dict = None):
+        super().__init__(message)
+        self.report = report or {}
+

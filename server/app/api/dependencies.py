@@ -33,6 +33,10 @@ from app.application.chat.send_message import SendMessageUseCase
 from app.domain.services.collection_manager import CollectionManager
 from app.domain.services.retrieval_service import RetrievalService
 from app.infrastructure.repositories.chroma_vector_store import ChromaCollectionManager
+from app.domain.services.generation_service import GenerationService
+from app.domain.services.citation_service import CitationService
+from app.domain.services.response_validator import ResponseValidator
+from app.application.services.rag_pipeline_service import RAGPipelineService
 
 
 
@@ -189,4 +193,41 @@ def get_send_message_use_case(
         conversation_repo=conversation_repo,
         document_repo=document_repo,
         rag_chain=rag_chain,
+    )
+
+
+@lru_cache
+def get_generation_service() -> GenerationService:
+    """Singleton generation service."""
+    provider = get_llm_provider()
+    response_validator = ResponseValidator()
+    return GenerationService(provider=provider, response_validator=response_validator)
+
+
+@lru_cache
+def get_citation_service() -> CitationService:
+    """Singleton citation service."""
+    return CitationService()
+
+
+def get_rag_pipeline_service(
+    document_repo: Annotated[SQLiteDocumentRepository, Depends(get_document_repo)],
+    upload_use_case: Annotated[UploadDocumentUseCase, Depends(get_upload_document_use_case)],
+    process_document_use_case: Annotated[ProcessDocumentUseCase, Depends(get_process_document_use_case)],
+    retrieval_service: Annotated[RetrievalService, Depends(get_retrieval_service)],
+    generation_service: Annotated[GenerationService, Depends(get_generation_service)],
+    citation_service: Annotated[CitationService, Depends(get_citation_service)],
+    file_storage: Annotated[LocalFileStorage, Depends(get_file_storage)],
+    parser_factory: Annotated[ParserFactory, Depends(get_parser_factory)],
+) -> RAGPipelineService:
+    """Per-request RAG pipeline service orchestrator."""
+    return RAGPipelineService(
+        document_repo=document_repo,
+        upload_use_case=upload_use_case,
+        process_document_use_case=process_document_use_case,
+        retrieval_service=retrieval_service,
+        generation_service=generation_service,
+        citation_service=citation_service,
+        file_storage=file_storage,
+        parser_factory=parser_factory,
     )
