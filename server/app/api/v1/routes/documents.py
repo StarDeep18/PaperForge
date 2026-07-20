@@ -1,0 +1,136 @@
+"""
+API v1 Documents Router.
+"""
+
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
+from typing import Optional, List
+
+from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
+from app.application.services.rag_pipeline_service import RAGPipelineService
+from app.api.v1.models.responses import DocumentResponse, UploadResponse, DocumentMetadataResponse
+from app.domain.entities.document import Document
+
+router = APIRouter(prefix="/documents", tags=["Documents"])
+
+
+def _map_document_to_response(doc: Document) -> DocumentResponse:
+    meta = doc.metadata
+    return DocumentResponse(
+        id=doc.id,
+        filename=doc.filename,
+        original_filename=doc.original_filename,
+        file_size=doc.file_size,
+        file_type=doc.file_type.value,
+        status=doc.status.value,
+        metadata=DocumentMetadataResponse(
+            title=meta.title if meta else None,
+            authors=meta.authors if meta and meta.authors else [],
+            abstract=meta.abstract if meta else None,
+            publication_date=meta.publication_date if meta else None,
+            journal=meta.journal if meta else None,
+            doi=meta.doi if meta else None,
+            keywords=meta.keywords if meta and meta.keywords else [],
+            page_count=meta.page_count if meta else 0,
+            word_count=meta.word_count if meta else 0,
+        ),
+        collection_id=doc.collection_id,
+        chunk_count=doc.chunk_count,
+        error_message=doc.error_message,
+        created_at=doc.created_at,
+        updated_at=doc.updated_at,
+    )
+
+
+@router.post(
+    "/upload",
+    response_model=List[UploadResponse],
+    status_code=201,
+    summary="Upload and process documents",
+    description="Synchronously uploads, parses, chunks, embeds, and stores one or more research papers (PDF, DOCX, TXT) in the vector database.",
+)
+async def upload_documents(
+    user_id: CurrentUserId,
+    files: List[UploadFile] = File(..., description="The files to upload and process."),
+    collection_id: Optional[str] = Form(None, description="Optional collection ID scoping."),
+    pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
+
+    responses = []
+    for file in files:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail=f"Uploaded file '{file.filename}' is empty.")
+
+        # Ingest document synchronously
+        result = await pipeline_service.ingest_document(
+            filename=file.filename or "unknown",
+            content=content,
+            user_id=user_id,
+            collection_id=collection_id,
+        )
+
+        responses.append(
+            UploadResponse(
+                document_id=result.document_id,
+                filename=file.filename or "unknown",
+                pages=result.pages,
+                chunks=result.chunks,
+                processing_time=result.duration,
+                warnings=result.warnings,
+            )
+        )
+    return responses
+
+
+@router.get(
+    "",
+    response_model=List[DocumentResponse],
+    summary="List uploaded documents",
+    description="Returns a list of all documents uploaded by the current user.",
+)
+async def list_documents(
+    user_id: CurrentUserId,
+    collection_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
+):
+    documents = await pipeline_service.list_documents(
+        user_id=user_id,
+        collection_id=collection_id,
+        limit=limit,
+        offset=offset,
+    )
+    return [_map_document_to_response(doc) for doc in documents]
+
+
+@router.get(
+    "/{document_id}",
+    response_model=DocumentResponse,
+    summary="Get document details",
+    description="Retrieves metadata details and status of a single document by ID.",
+)
+async def get_document(
+    document_id: str,
+    user_id: CurrentUserId,
+    pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
+):
+    doc = await pipeline_service.get_document(document_id, user_id)
+    return _map_document_to_response(doc)
+
+
+@router.delete(
+    "/{document_id}",
+    status_code=204,
+    summary="Delete a document",
+    description="Deletes a document record, physical file, and all associated embeddings/vectors.",
+)
+async def delete_document(
+    document_id: str,
+    user_id: CurrentUserId,
+    pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
+):
+    await pipeline_service.delete_document(document_id, user_id)
+    return None

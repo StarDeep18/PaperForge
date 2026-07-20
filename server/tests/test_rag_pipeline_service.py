@@ -90,6 +90,7 @@ async def test_initialization_failure():
             citation_service=None,
             file_storage=None,
             parser_factory=None,
+            vector_store_service=None,
         )
 
 
@@ -137,6 +138,7 @@ async def test_document_processing_success():
         citation_service=citation_service,
         file_storage=file_storage,
         parser_factory=parser_factory,
+        vector_store_service=vs_service,
     )
     
     doc = Document(
@@ -185,6 +187,7 @@ async def test_document_processing_failure():
         citation_service=citation_service,
         file_storage=file_storage,
         parser_factory=parser_factory,
+        vector_store_service=MagicMock(),
     )
     
     doc = Document(
@@ -262,6 +265,7 @@ async def test_answer_question_success():
         citation_service=cit_service,
         file_storage=file_storage,
         parser_factory=parser_factory,
+        vector_store_service=MagicMock(),
     )
     
     request = RAGRequest(
@@ -298,6 +302,7 @@ async def test_answer_question_validation_failure():
         citation_service=MagicMock(),
         file_storage=MagicMock(),
         parser_factory=MagicMock(),
+        vector_store_service=MagicMock(),
     )
     
     with pytest.raises(QuestionAnsweringFailure) as exc:
@@ -320,6 +325,7 @@ async def test_answer_question_provider_failure():
         citation_service=MagicMock(),
         file_storage=MagicMock(),
         parser_factory=MagicMock(),
+        vector_store_service=MagicMock(),
     )
     
     with pytest.raises(QuestionAnsweringFailure) as exc:
@@ -359,6 +365,7 @@ async def test_health_check_success():
         citation_service=MagicMock(),
         file_storage=file_storage,
         parser_factory=parser_factory,
+        vector_store_service=vs_service,
     )
     
     report = await pipeline.health_check()
@@ -405,6 +412,7 @@ async def test_health_check_failure():
         citation_service=MagicMock(),
         file_storage=file_storage,
         parser_factory=parser_factory,
+        vector_store_service=vs_service,
     )
     
     with pytest.raises(ProviderHealthFailure) as exc:

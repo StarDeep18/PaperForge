@@ -27,6 +27,7 @@ from app.domain.services.generation_service import GenerationService
 from app.domain.services.citation_service import CitationService
 from app.infrastructure.storage.local_file_storage import LocalFileStorage
 from app.infrastructure.parsing.parser_factory import ParserFactory
+from app.domain.services.vector_store_service import VectorStoreService
 from app.domain.exceptions import (
     RAGPipelineError,
     DocumentProcessingFailure,
@@ -34,6 +35,7 @@ from app.domain.exceptions import (
     PipelineInitializationFailure,
     ProviderHealthFailure,
     PaperForgeError,
+    DocumentNotFoundError,
 )
 
 class RAGPipelineService:
@@ -51,11 +53,12 @@ class RAGPipelineService:
         citation_service: CitationService,
         file_storage: LocalFileStorage,
         parser_factory: ParserFactory,
+        vector_store_service: VectorStoreService,
     ):
         if not all([
             document_repo, upload_use_case, process_document_use_case,
             retrieval_service, generation_service, citation_service,
-            file_storage, parser_factory
+            file_storage, parser_factory, vector_store_service
         ]):
             raise PipelineInitializationFailure("One or more dependencies were missing during RAGPipelineService initialization.")
 
@@ -67,6 +70,7 @@ class RAGPipelineService:
         self._citation_service = citation_service
         self._file_storage = file_storage
         self._parser_factory = parser_factory
+        self._vector_store_service = vector_store_service
 
     async def process_document(self, document: Document) -> DocumentProcessingResult:
         """
@@ -359,3 +363,69 @@ class RAGPipelineService:
             health_report["overall_status"] = "unhealthy"
             health_report["Overall Status"] = "unhealthy"
             raise ProviderHealthFailure(f"Pipeline health check execution failed: {str(e)}", health_report) from e
+
+    async def ingest_document(
+        self,
+        filename: str,
+        content: bytes,
+        user_id: str,
+        collection_id: Optional[str] = None,
+    ) -> DocumentProcessingResult:
+        """
+        Orchestrates the synchronous file upload and processing.
+        """
+        try:
+            document = await self._upload_use_case.execute(
+                filename=filename,
+                content=content,
+                user_id=user_id,
+                collection_id=collection_id,
+            )
+            return await self.process_document(document)
+        except Exception as e:
+            if isinstance(e, PaperForgeError):
+                raise DocumentProcessingFailure(e.message) from e
+            raise DocumentProcessingFailure(str(e)) from e
+
+    async def list_documents(
+        self,
+        user_id: str,
+        collection_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Document]:
+        """
+        Returns list of documents for a user.
+        """
+        return await self._document_repo.get_all(
+            user_id=user_id,
+            collection_id=collection_id,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_document(self, document_id: str, user_id: str) -> Document:
+        """
+        Retrieves metadata of a document.
+        """
+        document = await self._document_repo.get_by_id(document_id, user_id)
+        if not document:
+            raise DocumentNotFoundError(document_id)
+        return document
+
+    async def delete_document(self, document_id: str, user_id: str) -> None:
+        """
+        Deletes a document record, physical file, and vectors.
+        """
+        document = await self._document_repo.get_by_id(document_id, user_id)
+        if not document:
+            raise DocumentNotFoundError(document_id)
+
+        # 1. Delete vectors
+        await self._vector_store_service.delete_document(document_id)
+
+        # 2. Delete file
+        await self._file_storage.delete_file(document.file_path)
+
+        # 3. Delete DB record
+        await self._document_repo.delete(document_id, user_id)

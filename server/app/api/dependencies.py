@@ -219,6 +219,7 @@ def get_rag_pipeline_service(
     citation_service: Annotated[CitationService, Depends(get_citation_service)],
     file_storage: Annotated[LocalFileStorage, Depends(get_file_storage)],
     parser_factory: Annotated[ParserFactory, Depends(get_parser_factory)],
+    vector_store_service: Annotated[VectorStoreService, Depends(get_vector_store_service)],
 ) -> RAGPipelineService:
     """Per-request RAG pipeline service orchestrator."""
     return RAGPipelineService(
@@ -230,4 +231,5 @@ def get_rag_pipeline_service(
         citation_service=citation_service,
         file_storage=file_storage,
         parser_factory=parser_factory,
+        vector_store_service=vector_store_service,
     )
