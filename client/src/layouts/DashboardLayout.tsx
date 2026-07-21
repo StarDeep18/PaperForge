@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import {
   LayoutDashboard,
@@ -10,12 +10,27 @@ import {
   Search,
   ChevronDown,
   Database,
+  BookOpen,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
+import CommandPalette from "../components/CommandPalette";
 
 export default function DashboardLayout() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Global keyboard listener for Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Mock total storage usage computed from API stats
   const storageUsage = "18.4 MB";
@@ -59,6 +74,10 @@ export default function DashboardLayout() {
               <Brain className="h-4 w-4" />
               <span>Workspace</span>
             </NavLink>
+            <NavLink to="/notes" className={getNavLinkClass}>
+              <BookOpen className="h-4 w-4" />
+              <span>Research Notes</span>
+            </NavLink>
             <NavLink to="/settings" className={getNavLinkClass}>
               <Settings className="h-4 w-4" />
               <span>Settings</span>
@@ -91,14 +110,17 @@ export default function DashboardLayout() {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Top Header */}
         <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-6 bg-white dark:bg-zinc-950">
-          {/* Search bar placeholder */}
-          <div className="relative w-72">
+          {/* Search bar wrapper clickable */}
+          <div 
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="relative w-72 cursor-pointer"
+          >
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
             <input
               type="text"
-              placeholder="Search workspaces..."
-              className="w-full bg-zinc-100/70 hover:bg-zinc-100 dark:bg-zinc-900/60 dark:hover:bg-zinc-900 border-none outline-none rounded-lg pl-9 pr-4 py-2 text-sm transition-all focus:ring-1 focus:ring-zinc-400 focus:bg-white dark:focus:bg-zinc-900"
-              disabled
+              placeholder="Search everything... (Ctrl+K)"
+              className="w-full bg-zinc-100/70 hover:bg-zinc-100 dark:bg-zinc-900/60 dark:hover:bg-zinc-900 border border-transparent outline-none rounded-lg pl-9 pr-4 py-2 text-sm transition-all focus:ring-1 focus:ring-zinc-400 cursor-pointer pointer-events-none"
+              readOnly
             />
           </div>
 
@@ -135,6 +157,12 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Command Palette dialog overlay */}
+      <CommandPalette 
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+      />
     </div>
   );
 }

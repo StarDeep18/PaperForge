@@ -25,7 +25,7 @@ export default function PromptInput({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Enter" && e.ctrlKey)) {
       e.preventDefault();
       handleSend();
     }
@@ -34,6 +34,7 @@ export default function PromptInput({
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-950 p-3 hover:border-zinc-300 dark:hover:border-zinc-700 focus-within:ring-1 focus-within:ring-zinc-400 dark:focus-within:ring-zinc-600 transition-all duration-200">
       <textarea
+        id="chat-prompt-textarea"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}

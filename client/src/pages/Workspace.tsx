@@ -20,12 +20,90 @@ import ConfidenceBadge from "../components/ConfidenceBadge";
 import EmptyState from "../components/EmptyState";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { Citation, ChatResponse } from "../types";
+import PDFViewerDrawer from "../components/PDFViewerDrawer";
 
 export default function Workspace() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
-  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string; citations?: Citation[]; confidence?: string; evidence?: any[] }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string; citations?: Citation[]; confidence?: string; evidence?: any[] }>>(() => {
+    try {
+      const stored = localStorage.getItem("paperforge_current_chat_messages");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
+  const [activePDF, setActivePDF] = useState<{
+    documentId: string;
+    documentTitle: string;
+    pageNumber: number;
+    snippet?: string;
+  } | null>(null);
+
+  // Sync messages with local storage
+  useEffect(() => {
+    localStorage.setItem("paperforge_current_chat_messages", JSON.stringify(messages));
+  }, [messages]);
+
+  // Global keyboard shortcuts and Command Palette integration listeners
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setActivePDF(null);
+      }
+      if (e.key === "/") {
+        const tag = document.activeElement?.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          e.preventDefault();
+          const promptArea = document.getElementById("chat-prompt-textarea");
+          promptArea?.focus();
+        }
+      }
+    };
+
+    const handleFocusDoc = (e: Event) => {
+      const doc = (e as CustomEvent).detail;
+      if (doc && doc.id) {
+        setSelectedDocIds((prev) => (prev.includes(doc.id) ? prev : [...prev, doc.id]));
+        setActivePDF({
+          documentId: doc.id,
+          documentTitle: doc.filename,
+          pageNumber: 1,
+          snippet: "",
+        });
+      }
+    };
+
+    const handleOpenCitation = (e: Event) => {
+      const cite = (e as CustomEvent).detail;
+      if (cite && cite.document_id) {
+        setSelectedDocIds((prev) => (prev.includes(cite.document_id) ? prev : [...prev, cite.document_id]));
+        setActivePDF({
+          documentId: cite.document_id,
+          documentTitle: cite.document_title,
+          pageNumber: cite.pages?.[0] || 1,
+          snippet: cite.supporting_chunks?.[0] || "",
+        });
+      }
+    };
+
+    const handleNewChat = () => {
+      setMessages([]);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("paperforge-focus-doc", handleFocusDoc);
+    window.addEventListener("paperforge-open-citation", handleOpenCitation);
+    window.addEventListener("paperforge-new-chat", handleNewChat);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("paperforge-focus-doc", handleFocusDoc);
+      window.removeEventListener("paperforge-open-citation", handleOpenCitation);
+      window.removeEventListener("paperforge-new-chat", handleNewChat);
+    };
+  }, []);
 
   // References for automatic scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -121,13 +199,26 @@ export default function Workspace() {
     }
   };
 
-  // Scroll to active citation card and highlight it
+  // Scroll to active citation card, highlight it, and open PDF viewer drawer
   const handleCitationClick = (citationNum: string) => {
     setActiveCitationId(citationNum);
     const element = citationRefs.current[citationNum];
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
+
+    // Load PDF drawer with this citation's specific page/grounding snippet
+    const idx = parseInt(citationNum) - 1;
+    const citeData = currentCitations[idx];
+    if (citeData) {
+      setActivePDF({
+        documentId: citeData.document_id,
+        documentTitle: citeData.document_title,
+        pageNumber: citeData.pages?.[0] || 1,
+        snippet: citeData.supporting_chunks?.[0] || "",
+      });
+    }
+
     // Auto-reset highlight flash after 2 seconds
     setTimeout(() => {
       setActiveCitationId(null);
@@ -381,6 +472,16 @@ export default function Workspace() {
           </div>
         </div>
       </div>
+
+      {/* Slide-over PDF viewer panel */}
+      <PDFViewerDrawer
+        isOpen={activePDF !== null}
+        onClose={() => setActivePDF(null)}
+        documentId={activePDF?.documentId || ""}
+        documentTitle={activePDF?.documentTitle || ""}
+        pageNumber={activePDF?.pageNumber || 1}
+        snippet={activePDF?.snippet || ""}
+      />
     </div>
   );
 }

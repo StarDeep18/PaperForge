@@ -41,13 +41,17 @@ async def send_message(
     result = await pipeline_service.answer_question(rag_request)
 
     # Serialize domain objects into responses Pydantic schemas
+    chunk_snippets = {}
+    if result.retrieval_result and result.retrieval_result.retrieved_chunks:
+        chunk_snippets = {c.id: c.content for c in result.retrieval_result.retrieved_chunks}
+
     citations = [
         CitationResponse(
             citation_id=c.citation_id,
             document_id=c.document_id,
             document_title=c.document_title,
             pages=c.pages,
-            supporting_chunks=c.supporting_chunks,
+            supporting_chunks=[chunk_snippets.get(cid, cid) for cid in c.supporting_chunks],
             confidence=c.confidence,
             formatted_reference=c.formatted_reference,
         )

@@ -88,3 +88,14 @@ export interface HealthResponse {
   citation: string;
   overall_status: string;
 }
+
+export interface ResearchNote {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  pageNumber: number;
+  snippet: string;
+  note: string;
+  createdAt: string;
+}
+

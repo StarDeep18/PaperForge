@@ -2,8 +2,10 @@
 API Documents Router.
 """
 
+import os
 import asyncio
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Request, Query
+from fastapi.responses import FileResponse
 from typing import Optional, List
 
 from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
@@ -142,6 +144,24 @@ async def get_document(
 ):
     doc = await pipeline_service.get_document(document_id, user_id)
     return _map_document_to_response(doc)
+
+
+@router.get(
+    "/{document_id}/file",
+    summary="Get document raw file",
+    description="Serves the physical document file (e.g. PDF) directly from disk.",
+)
+async def get_document_file(
+    document_id: str,
+    user_id: CurrentUserId,
+    pipeline_service: RAGPipelineService = Depends(get_rag_pipeline_service),
+):
+    doc = await pipeline_service.get_document(document_id, user_id)
+    if not doc.file_path or not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="Physical file not found.")
+    
+    media_type = "application/pdf" if doc.file_type.value.lower() == "pdf" else "application/octet-stream"
+    return FileResponse(doc.file_path, media_type=media_type, filename=doc.original_filename)
 
 
 @router.delete(
