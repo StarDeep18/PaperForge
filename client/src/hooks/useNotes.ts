@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { ResearchNote } from "../types";
+import { addTimelineEvent } from "./useTimeline";
 
 interface NotesState {
   notes: ResearchNote[];
@@ -60,6 +61,8 @@ export const useNotes = create<NotesState>((set, get) => {
     exportNotes: () => {
       const notes = get().notes;
       if (notes.length === 0) return;
+
+      addTimelineEvent("export_notes", `Exported ${notes.length} research notes`);
 
       let markdown = `# PaperForge Research Notes\n\n`;
       markdown += `Exported on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n\n`;

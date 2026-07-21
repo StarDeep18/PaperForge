@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import {
@@ -10,13 +10,64 @@ import {
   Database,
   ArrowRight,
   RefreshCw,
+  MessageSquare,
+  Sparkles,
+  Download,
+  Clock,
 } from "lucide-react";
 import { documentService } from "../services/documentService";
 import { healthService } from "../services/healthService";
 import StatusBadge from "../components/StatusBadge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import { getTimelineEvents, TimelineEvent } from "../hooks/useTimeline";
 
 export default function Dashboard() {
+  const [rightTab, setRightTab] = useState<"timeline" | "health">("timeline");
+  const [timeline, setTimeline] = useState<TimelineEvent[]>(() => getTimelineEvents());
+
+  // Listen to timeline updates reactively
+  useEffect(() => {
+    const handleUpdate = () => {
+      setTimeline(getTimelineEvents());
+    };
+    window.addEventListener("paperforge-timeline-updated", handleUpdate);
+    return () => window.removeEventListener("paperforge-timeline-updated", handleUpdate);
+  }, []);
+
+  // Format timestamp helper
+  const formatTimeAgo = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+      
+      if (seconds < 60) return "Just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      
+      return date.toLocaleDateString([], { month: "short", day: "numeric" });
+    } catch {
+      return "Recently";
+    }
+  };
+
+  // Helper for timeline action icons
+  const getTimelineIcon = (type: string) => {
+    switch (type) {
+      case "upload":
+        return <Upload className="h-3.5 w-3.5 text-zinc-505" />;
+      case "insight_save":
+        return <Sparkles className="h-3.5 w-3.5 text-amber-500" />;
+      case "ask_question":
+        return <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />;
+      case "export_notes":
+        return <Download className="h-3.5 w-3.5 text-violet-500" />;
+      default:
+        return <Clock className="h-3.5 w-3.5 text-zinc-400" />;
+    }
+  };
+
   // Query health check status
   const {
     data: health,
@@ -179,44 +230,105 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ── Right: Services Auditing Status Details ─────────────── */}
-        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="border-b border-zinc-100 dark:border-zinc-900 pb-3">
-            <h3 className="font-semibold text-sm text-zinc-900 dark:text-zinc-50">
-              Audits Health Details
-            </h3>
+        {/* ── Right: Integrated Timeline & Health Audit tabs ──────── */}
+        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-2xl shadow-sm flex flex-col overflow-hidden h-[380px]">
+          {/* Tabs bar */}
+          <div className="flex border-b border-zinc-150 dark:border-zinc-900 flex-shrink-0 bg-zinc-50/50 dark:bg-zinc-905/30">
+            <button
+              onClick={() => setRightTab("timeline")}
+              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 cursor-pointer transition-colors ${
+                rightTab === "timeline"
+                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50 bg-white dark:bg-zinc-950/20"
+                  : "border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-650"
+              }`}
+            >
+              Timeline
+            </button>
+            <button
+              onClick={() => setRightTab("health")}
+              className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider text-center border-b-2 cursor-pointer transition-colors ${
+                rightTab === "health"
+                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50 bg-white dark:bg-zinc-950/20"
+                  : "border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-650"
+              }`}
+            >
+              System Health
+            </button>
           </div>
 
-          {healthLoading ? (
-            <LoadingSkeleton type="table" />
-          ) : (
-            <div className="space-y-3.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Upload Service</span>
-                <StatusBadge status={health?.upload_service ?? "Healthy"} size="sm" />
+          <div className="flex-1 overflow-y-auto p-5">
+            {rightTab === "timeline" ? (
+              /* Timeline View */
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+                  Session Research Timeline
+                </h4>
+                {timeline.length === 0 ? (
+                  <div className="text-center py-16 text-zinc-400 dark:text-zinc-505 text-xs">
+                    No timeline logs captured. Go to Workspace to start!
+                  </div>
+                ) : (
+                  <div className="relative border-l border-zinc-200 dark:border-zinc-800 ml-2.5 pl-5 space-y-4 text-xs">
+                    {timeline.slice(0, 10).map((event) => (
+                      <div key={event.id} className="relative">
+                        {/* Icon Node Dot */}
+                        <div className="absolute -left-[30px] top-0.5 h-5 w-5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex items-center justify-center shadow-sm">
+                          {getTimelineIcon(event.type)}
+                        </div>
+
+                        {/* Event text content */}
+                        <div className="space-y-0.5 min-w-0">
+                          <p className="font-semibold text-zinc-805 dark:text-zinc-250 leading-normal break-words">
+                            {event.message}
+                          </p>
+                          <span className="text-[9px] text-zinc-400 dark:text-zinc-505 block uppercase font-medium">
+                            {formatTimeAgo(event.timestamp)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Parsing Engine</span>
-                <StatusBadge status={health?.parser ?? "Healthy"} size="sm" />
+            ) : (
+              /* Health Audit View */
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-bold text-zinc-400 dark:text-zinc-505 uppercase tracking-wider border-b border-zinc-100 dark:border-zinc-900 pb-2">
+                  System Diagnostics Check
+                </h4>
+                {healthLoading ? (
+                  <LoadingSkeleton type="table" />
+                ) : (
+                  <div className="space-y-3.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-550">Upload Service</span>
+                      <StatusBadge status={health?.upload_service ?? "Healthy"} size="sm" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-550">Parsing Engine</span>
+                      <StatusBadge status={health?.parser ?? "Healthy"} size="sm" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-550">Embedding AI Provider</span>
+                      <StatusBadge status={health?.embedding_provider ?? "Healthy"} size="sm" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-550">Chroma Vector Store</span>
+                      <StatusBadge status={health?.vector_store ?? "Healthy"} size="sm" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-550">Retrieval Service</span>
+                      <StatusBadge status={health?.retrieval ?? "Healthy"} size="sm" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-550">LLM Generation Provider</span>
+                      <StatusBadge status={health?.generation ?? "Healthy"} size="sm" />
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Embedding AI Provider</span>
-                <StatusBadge status={health?.embedding_provider ?? "Healthy"} size="sm" />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Chroma Vector Store</span>
-                <StatusBadge status={health?.vector_store ?? "Healthy"} size="sm" />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Retrieval Service</span>
-                <StatusBadge status={health?.retrieval ?? "Healthy"} size="sm" />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-500">LLM Generation Provider</span>
-                <StatusBadge status={health?.generation ?? "Healthy"} size="sm" />
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

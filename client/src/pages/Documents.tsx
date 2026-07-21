@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { addTimelineEvent } from "../hooks/useTimeline";
 import { Search, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { documentService } from "../services/documentService";
 import UploadDropzone from "../components/UploadDropzone";
@@ -37,11 +38,12 @@ export default function Documents() {
   // Upload mutation
   const uploadMutation = useMutation({
     mutationFn: (files: File[]) => documentService.uploadDocuments(files),
-    onSuccess: (res) => {
+    onSuccess: (res, files) => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       queryClient.invalidateQueries({ queryKey: ["recent-documents"] });
-      // In package.json, we have sonner, let's use a simple window alert or standard toast if available
-      // Standard toast: import { toast } from "sonner"
+      
+      const filenames = files.map((f) => f.name).join(", ");
+      addTimelineEvent("upload", `Uploaded paper(s): ${filenames}`);
     },
     onError: (err) => {
       console.error("Upload failed", err);

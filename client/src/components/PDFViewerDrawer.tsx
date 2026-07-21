@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, BookOpen, Sparkles, Check } from "lucide-react";
 import { useNotes } from "../hooks/useNotes";
 import { toast } from "sonner";
+import { addTimelineEvent } from "../hooks/useTimeline";
 
 interface PDFViewerDrawerProps {
   isOpen: boolean;
@@ -45,8 +46,13 @@ export default function PDFViewerDrawer({
       note: annotation,
     });
     
+    addTimelineEvent("insight_save", `Saved insight from ${documentTitle} (Page ${pageNumber})`);
+    
     setIsSaved(true);
     toast.success("Insight saved directly to Research Notes!");
+    
+    // Dispatch custom event to notify Workspace to focus/select Notes tab
+    window.dispatchEvent(new Event("paperforge-note-saved-redirect"));
   };
 
   // Construct PDF URL pointing to local proxy server with page jump hash

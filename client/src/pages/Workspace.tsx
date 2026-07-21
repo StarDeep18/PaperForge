@@ -21,6 +21,9 @@ import EmptyState from "../components/EmptyState";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { Citation, ChatResponse } from "../types";
 import PDFViewerDrawer from "../components/PDFViewerDrawer";
+import { useNotes } from "../hooks/useNotes";
+import { addTimelineEvent } from "../hooks/useTimeline";
+import { BookOpen, Download, Trash2 } from "lucide-react";
 
 export default function Workspace() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -40,6 +43,9 @@ export default function Workspace() {
     pageNumber: number;
     snippet?: string;
   } | null>(null);
+
+  const { notes, updateNote, deleteNote, exportNotes } = useNotes();
+  const [rightPanelTab, setRightPanelTab] = useState<"grounding" | "notes">("grounding");
 
   // Sync messages with local storage
   useEffect(() => {
@@ -92,16 +98,22 @@ export default function Workspace() {
       setMessages([]);
     };
 
+    const handleNoteSavedRedirect = () => {
+      setRightPanelTab("notes");
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("paperforge-focus-doc", handleFocusDoc);
     window.addEventListener("paperforge-open-citation", handleOpenCitation);
     window.addEventListener("paperforge-new-chat", handleNewChat);
+    window.addEventListener("paperforge-note-saved-redirect", handleNoteSavedRedirect);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("paperforge-focus-doc", handleFocusDoc);
       window.removeEventListener("paperforge-open-citation", handleOpenCitation);
       window.removeEventListener("paperforge-new-chat", handleNewChat);
+      window.removeEventListener("paperforge-note-saved-redirect", handleNoteSavedRedirect);
     };
   }, []);
 
@@ -165,6 +177,8 @@ export default function Workspace() {
           evidence: data.evidence_graph?.nodes ?? [],
         },
       ]);
+      const truncatedQuery = queryText.length > 55 ? queryText.substring(0, 55) + "..." : queryText;
+      addTimelineEvent("ask_question", `Asked: "${truncatedQuery}"`);
     },
     onError: (err) => {
       console.error("Chat request failed", err);
@@ -377,6 +391,58 @@ export default function Workspace() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Suggested prompts list */}
+        {readyDocuments.length > 0 && selectedDocIds.length > 0 && (
+          <div className="px-4 py-2 border-t border-zinc-150 dark:border-zinc-900/60 bg-zinc-50/20 dark:bg-zinc-950/20 flex gap-2 overflow-x-auto scrollbar-none items-center scrollbar-thin">
+            <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider whitespace-nowrap mr-1 flex items-center gap-1 flex-shrink-0">
+              <Sparkles className="h-3 w-3" /> Suggestions:
+            </span>
+            {selectedDocIds.length > 1 ? (
+              <>
+                <button
+                  onClick={() => handleSendPrompt("Compare the research methodologies, architectures, and theoretical foundations used across these papers.")}
+                  className="px-2.5 py-1 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] font-semibold text-zinc-650 dark:text-zinc-350 cursor-pointer whitespace-nowrap transition-colors"
+                >
+                  📊 Compare Methodologies
+                </button>
+                <button
+                  onClick={() => handleSendPrompt("Provide a comparative analysis of the evaluation datasets, benchmarks, metrics, and empirical performance results.")}
+                  className="px-2.5 py-1 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] font-semibold text-zinc-650 dark:text-zinc-350 cursor-pointer whitespace-nowrap transition-colors"
+                >
+                  🏆 Compare Results
+                </button>
+                <button
+                  onClick={() => handleSendPrompt("What are the key research gaps, conflicts, unresolved questions, or future directions identified between these works?")}
+                  className="px-2.5 py-1 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] font-semibold text-zinc-650 dark:text-zinc-350 cursor-pointer whitespace-nowrap transition-colors"
+                >
+                  🔍 Identify Research Gaps
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleSendPrompt("Summarize the primary contributions, core thesis, and novel claims of this research paper.")}
+                  className="px-2.5 py-1 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] font-semibold text-zinc-650 dark:text-zinc-350 cursor-pointer whitespace-nowrap transition-colors"
+                >
+                  📝 Summarize Contributions
+                </button>
+                <button
+                  onClick={() => handleSendPrompt("Explain the technical methodology, algorithms, model design, and experimental setup detailed in this paper.")}
+                  className="px-2.5 py-1 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] font-semibold text-zinc-650 dark:text-zinc-350 cursor-pointer whitespace-nowrap transition-colors"
+                >
+                  ⚙️ Explain Methodology
+                </button>
+                <button
+                  onClick={() => handleSendPrompt("What are the limitations, assumptions, failures, or critical arguments against the claims in this paper?")}
+                  className="px-2.5 py-1 bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-zinc-200 dark:border-zinc-800 rounded-lg text-[10px] font-semibold text-zinc-650 dark:text-zinc-350 cursor-pointer whitespace-nowrap transition-colors"
+                >
+                  ⚠️ Identify Limitations
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Floating Chat Input */}
         <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
           <PromptInput
@@ -388,89 +454,193 @@ export default function Workspace() {
         </div>
       </div>
 
-      {/* ── RIGHT COLUMN: Evidence & Grounding citations ─────────── */}
+      {/* ── RIGHT COLUMN: Integrated Evidence & Grounding citations / Research Notes ── */}
       <div className="col-span-3 border-l border-zinc-200 dark:border-zinc-800 flex flex-col h-full overflow-hidden bg-white dark:bg-zinc-950">
         
-        {/* Upper Pane: EvidenceStatements Log */}
-        <div className="flex-1 flex flex-col h-1/2 min-h-0 border-b border-zinc-200 dark:border-zinc-800 p-4">
-          <span className="text-xs font-bold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider flex items-center gap-1.5 mb-3.5">
-            <Sparkles className="h-4 w-4 text-zinc-500" />
-            <span>Extracted Evidence ({currentEvidence.length})</span>
-          </span>
+        {/* Right Panel Tabs navigation header */}
+        <div className="flex border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 bg-zinc-55/30">
+          <button
+            onClick={() => setRightPanelTab("grounding")}
+            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              rightPanelTab === "grounding"
+                ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50 bg-zinc-50/20 dark:bg-zinc-950/10"
+                : "border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-650"
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>Grounding ({currentCitations.length})</span>
+          </button>
+          <button
+            onClick={() => setRightPanelTab("notes")}
+            className={`flex-1 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-colors cursor-pointer ${
+              rightPanelTab === "notes"
+                ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50 bg-zinc-50/20 dark:bg-zinc-950/10"
+                : "border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-650"
+            }`}
+          >
+            <BookOpen className="h-4 w-4" />
+            <span>Workspace Notes ({notes.filter((n) => selectedDocIds.includes(n.documentId)).length})</span>
+          </button>
+        </div>
 
-          <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 text-xs">
-            {messages.length === 0 ? (
-              <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
-                Send a question to compile supporting evidence graphs.
+        {/* Tab content view mapping */}
+        {rightPanelTab === "grounding" ? (
+          <div className="flex-1 flex flex-col min-h-0 divide-y divide-zinc-200 dark:divide-zinc-800">
+            {/* Upper Pane: EvidenceStatements Log */}
+            <div className="flex-1 flex flex-col h-1/2 min-h-0 p-4">
+              <span className="text-[10px] font-bold text-zinc-450 dark:text-zinc-550 uppercase tracking-wider flex items-center gap-1.5 mb-3.5">
+                <Sparkles className="h-3.5 w-3.5 text-zinc-450" />
+                <span>Extracted Evidence ({currentEvidence.length})</span>
+              </span>
+
+              <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 text-xs">
+                {messages.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
+                    Send a question to compile supporting evidence graphs.
+                  </div>
+                ) : currentEvidence.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
+                    No statement-level evidence generated for this answer.
+                  </div>
+                ) : (
+                  currentEvidence.map((node, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 border border-zinc-100 dark:border-zinc-900 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/30"
+                    >
+                      <p className="font-semibold text-zinc-850 dark:text-zinc-250 leading-relaxed mb-1.5">
+                        {node.statement}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold uppercase">
+                        <span>Evidence confidence</span>
+                        <span className={node.confidence > 0.7 ? "text-emerald-500" : "text-amber-500"}>
+                          {(node.confidence * 100).toFixed(0)}% Match
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-            ) : currentEvidence.length === 0 ? (
-              <div className="text-center py-12 text-zinc-400 dark:text-zinc-500">
-                No statement-level evidence generated for this answer.
+            </div>
+
+            {/* Lower Pane: Grounding Citations Library */}
+            <div className="flex-1 flex flex-col h-1/2 min-h-0 p-4">
+              <div className="flex items-center justify-between mb-3.5">
+                <span className="text-[10px] font-bold text-zinc-450 dark:text-zinc-555 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-zinc-455" />
+                  <span>Grounding Sources ({currentCitations.length})</span>
+                </span>
+
+                {currentConfidence && <ConfidenceBadge confidence={currentConfidence} />}
               </div>
-            ) : (
-              currentEvidence.map((node, idx) => (
-                <div
-                  key={idx}
-                  className="p-3 border border-zinc-100 dark:border-zinc-900 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/30"
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                {messages.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-400 dark:text-zinc-500 text-xs">
+                    Citations list will appear here when answers are processed.
+                  </div>
+                ) : currentCitations.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-400 dark:text-zinc-500 text-xs">
+                    Answer is based on general training dataset without citations.
+                  </div>
+                ) : (
+                  currentCitations.map((cite, index) => {
+                    const citeNum = cite.citation_id || String(index + 1);
+                    return (
+                      <div
+                        key={citeNum}
+                        ref={(el) => {
+                          citationRefs.current[citeNum] = el;
+                        }}
+                        className="transition-all duration-300"
+                      >
+                        <CitationCard
+                          citation={cite}
+                          index={index + 1}
+                          isActive={activeCitationId === citeNum}
+                          onClick={() => handleCitationClick(citeNum)}
+                        />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Tab 2: Integrated notes scoped to selected documents */
+          <div className="flex-1 flex flex-col min-h-0 p-4 bg-zinc-50/20 dark:bg-zinc-950/25">
+            {/* Header info & export */}
+            <div className="flex items-center justify-between gap-3 mb-4 flex-shrink-0">
+              <span className="text-[10px] font-bold text-zinc-450 dark:text-zinc-500 uppercase tracking-wider">
+                Session Scientific Notes
+              </span>
+              {notes.filter((n) => selectedDocIds.includes(n.documentId)).length > 0 && (
+                <button
+                  onClick={exportNotes}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 rounded-lg text-[10px] font-bold shadow-sm transition-colors cursor-pointer"
                 >
-                  <p className="font-semibold text-zinc-850 dark:text-zinc-250 leading-relaxed mb-1.5">
-                    {node.statement}
+                  <Download className="h-3 w-3" />
+                  <span>Export notes</span>
+                </button>
+              )}
+            </div>
+
+            {/* Notes scroll list */}
+            <div className="flex-1 overflow-y-auto space-y-3.5 pr-1">
+              {notes.filter((n) => selectedDocIds.includes(n.documentId)).length === 0 ? (
+                <div className="text-center py-12 text-zinc-450 dark:text-zinc-550 text-xs space-y-2">
+                  <p>No research notes saved for active documents.</p>
+                  <p className="text-[10px] text-zinc-400">
+                    Click "Save Insight" in citation cards or the PDF Viewer drawer to capture notes.
                   </p>
-                  <div className="flex items-center justify-between text-[10px] text-zinc-400 dark:text-zinc-500 font-semibold uppercase">
-                    <span>Evidence confidence</span>
-                    <span className={node.confidence > 0.7 ? "text-emerald-500" : "text-amber-500"}>
-                      {(node.confidence * 100).toFixed(0)}% Match
-                    </span>
-                  </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              ) : (
+                notes
+                  .filter((note) => selectedDocIds.includes(note.documentId))
+                  .map((note) => (
+                    <div
+                      key={note.id}
+                      className="border border-zinc-150 dark:border-zinc-850 rounded-xl p-4 bg-white dark:bg-zinc-950 flex flex-col space-y-3 shadow-sm animate-in fade-in duration-200"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-550">
+                            Page {note.pageNumber}
+                          </span>
+                          <h5 className="text-[10px] font-bold text-zinc-900 dark:text-zinc-100 truncate mt-1">
+                            {note.documentTitle}
+                          </h5>
+                        </div>
+                        <button
+                          onClick={() => deleteNote(note.id)}
+                          className="text-zinc-400 hover:text-red-500 p-1 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-colors cursor-pointer"
+                          aria-label="Delete note"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
 
-        {/* Lower Pane: Grounding Citations Library */}
-        <div className="flex-1 flex flex-col h-1/2 min-h-0 p-4">
-          <div className="flex items-center justify-between mb-3.5">
-            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-50 uppercase tracking-wider flex items-center gap-1.5">
-              <Layers className="h-4 w-4 text-zinc-500" />
-              <span>Grounding Sources ({currentCitations.length})</span>
-            </span>
+                      {/* Cited grounding text quote */}
+                      <p className="text-[10px] text-zinc-500 bg-zinc-50/50 dark:bg-zinc-900/30 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-900/20 italic line-clamp-3">
+                        "{note.snippet}"
+                      </p>
 
-            {currentConfidence && <ConfidenceBadge confidence={currentConfidence} />}
+                      {/* Live textarea editor */}
+                      <div className="space-y-1">
+                        <textarea
+                          value={note.note}
+                          onChange={(e) => updateNote(note.id, e.target.value)}
+                          placeholder="Add custom annotations or remarks..."
+                          className="w-full resize-none bg-zinc-50/20 dark:bg-zinc-900/10 border border-zinc-200 dark:border-zinc-850 rounded-lg p-2 text-[10px] outline-none focus:border-zinc-400 min-h-[50px] leading-normal"
+                        />
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
           </div>
-
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-            {messages.length === 0 ? (
-              <div className="text-center py-12 text-zinc-400 dark:text-zinc-500 text-xs">
-                Citations list will appear here when answers are processed.
-              </div>
-            ) : currentCitations.length === 0 ? (
-              <div className="text-center py-12 text-zinc-400 dark:text-zinc-500 text-xs">
-                Answer is based on general training dataset without citations.
-              </div>
-            ) : (
-              currentCitations.map((cite, index) => {
-                const citeNum = cite.citation_id || String(index + 1);
-                return (
-                  <div
-                    key={citeNum}
-                    ref={(el) => {
-                      citationRefs.current[citeNum] = el;
-                    }}
-                    className="transition-all duration-300"
-                  >
-                    <CitationCard
-                      citation={cite}
-                      index={index + 1}
-                      isActive={activeCitationId === citeNum}
-                      onClick={() => handleCitationClick(citeNum)}
-                    />
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Slide-over PDF viewer panel */}
