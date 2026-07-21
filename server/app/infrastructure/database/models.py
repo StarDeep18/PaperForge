@@ -40,6 +40,7 @@ class UserModel(Base):
     __tablename__ = "users"
 
     id = Column(String(36), primary_key=True)
+    firebase_uid = Column(String(128), unique=True, nullable=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
     avatar_url = Column(String(512), default="")
@@ -164,3 +165,53 @@ class MessageModel(Base):
 
     # Relationships
     conversation = relationship("ConversationModel", back_populates="messages")
+
+
+class ResearchNoteModel(Base):
+    """Research notes saved by the user."""
+
+    __tablename__ = "research_notes"
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    document_id = Column(String(36), ForeignKey("documents.id"), nullable=False, index=True)
+    document_title = Column(String(512), nullable=False)
+    page_number = Column(Integer, default=1)
+    snippet = Column(Text, nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    user = relationship("UserModel")
+    document = relationship("DocumentModel")
+
+
+class TimelineEventModel(Base):
+    """Timeline events representing research session logs."""
+
+    __tablename__ = "timeline_events"
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String(50), nullable=False)
+    message = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=utc_now)
+
+    user = relationship("UserModel")
+
+
+class WorkspaceSettingsModel(Base):
+    """Workspace settings representing active session state."""
+
+    __tablename__ = "workspace_settings"
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    theme = Column(String(20), default="light")
+    selected_document_ids = Column(JSON, nullable=True)  # list[str]
+    active_document_id = Column(String(36), nullable=True)
+    active_conversation_id = Column(String(36), nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    user = relationship("UserModel")

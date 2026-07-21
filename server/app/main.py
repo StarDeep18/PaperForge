@@ -47,6 +47,20 @@ async def lifespan(app: FastAPI):
     settings.data_path
     settings.upload_path
 
+    # Run raw SQL to add firebase_uid column if missing (SQLite development migration)
+    async with engine.begin() as conn:
+        def migrate_schema(connection):
+            cursor = connection.connection.cursor()
+            cursor.execute("PRAGMA table_info(users)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if columns and "firebase_uid" not in columns:
+                logger.info("Altering users table to add firebase_uid column...")
+                cursor.execute("ALTER TABLE users ADD COLUMN firebase_uid VARCHAR(128)")
+                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_firebase_uid ON users (firebase_uid)")
+                connection.connection.commit()
+                logger.info("users table altered successfully")
+        await conn.run_sync(migrate_schema)
+
     # Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

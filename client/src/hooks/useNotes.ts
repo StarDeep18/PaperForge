@@ -1,61 +1,88 @@
 import { create } from "zustand";
 import { ResearchNote } from "../types";
 import { addTimelineEvent } from "./useTimeline";
+import { api } from "../services/api";
 
 interface NotesState {
   notes: ResearchNote[];
-  addNote: (note: Omit<ResearchNote, "id" | "createdAt">) => void;
-  updateNote: (id: string, noteText: string) => void;
-  deleteNote: (id: string) => void;
+  fetchNotes: () => Promise<void>;
+  addNote: (note: Omit<ResearchNote, "id" | "createdAt">) => Promise<void>;
+  updateNote: (id: string, noteText: string) => Promise<void>;
+  deleteNote: (id: string) => Promise<void>;
   exportNotes: () => void;
 }
 
 export const useNotes = create<NotesState>((set, get) => {
-  // Load initial notes from localStorage
-  const getInitialNotes = (): ResearchNote[] => {
-    try {
-      const stored = localStorage.getItem("paperforge_research_notes");
-      return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-      console.error("Failed to load notes from localStorage", e);
-      return [];
-    }
-  };
-
-  const saveNotes = (notes: ResearchNote[]) => {
-    try {
-      localStorage.setItem("paperforge_research_notes", JSON.stringify(notes));
-    } catch (e) {
-      console.error("Failed to save notes to localStorage", e);
-    }
-  };
-
   return {
-    notes: getInitialNotes(),
+    notes: [],
 
-    addNote: (noteData) => {
-      const newNote: ResearchNote = {
-        ...noteData,
-        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11),
-        createdAt: new Date().toISOString(),
-      };
-      const updatedNotes = [newNote, ...get().notes];
-      set({ notes: updatedNotes });
-      saveNotes(updatedNotes);
+    fetchNotes: async () => {
+      try {
+        const response = await api.get<any[]>("/notes");
+        const mapped = response.data.map((n) => ({
+          id: n.id,
+          documentId: n.document_id,
+          documentTitle: n.document_title,
+          pageNumber: n.page_number,
+          snippet: n.snippet,
+          note: n.note || "",
+          createdAt: n.created_at || n.createdAt,
+        }));
+        set({ notes: mapped });
+      } catch (e) {
+        console.error("Failed to load notes from backend API:", e);
+      }
     },
 
-    updateNote: (id, noteText) => {
+    addNote: async (noteData) => {
+      try {
+        const response = await api.post("/notes", {
+          document_id: noteData.documentId,
+          document_title: noteData.documentTitle,
+          page_number: noteData.pageNumber,
+          snippet: noteData.snippet,
+          note: noteData.note,
+        });
+        const saved = response.data;
+        const mapped: ResearchNote = {
+          id: saved.id,
+          documentId: saved.document_id,
+          documentTitle: saved.document_title,
+          pageNumber: saved.page_number,
+          snippet: saved.snippet,
+          note: saved.note || "",
+          createdAt: saved.created_at || saved.createdAt,
+        };
+        set({ notes: [mapped, ...get().notes] });
+      } catch (e) {
+        console.error("Failed to save note to backend API:", e);
+      }
+    },
+
+    updateNote: async (id, noteText) => {
+      // Optimistic update
       const updatedNotes = get().notes.map((note) =>
         note.id === id ? { ...note, note: noteText } : note
       );
       set({ notes: updatedNotes });
-      saveNotes(updatedNotes);
+
+      try {
+        await api.patch(`/notes/${id}`, { note: noteText });
+      } catch (e) {
+        console.error("Failed to update note in backend API:", e);
+      }
     },
 
-    deleteNote: (id) => {
+    deleteNote: async (id) => {
+      // Optimistic delete
       const updatedNotes = get().notes.filter((note) => note.id !== id);
       set({ notes: updatedNotes });
-      saveNotes(updatedNotes);
+
+      try {
+        await api.delete(`/notes/${id}`);
+      } catch (e) {
+        console.error("Failed to delete note in backend API:", e);
+      }
     },
 
     exportNotes: () => {

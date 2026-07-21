@@ -24,18 +24,44 @@ import PDFViewerDrawer from "../components/PDFViewerDrawer";
 import { useNotes } from "../hooks/useNotes";
 import { addTimelineEvent } from "../hooks/useTimeline";
 import { BookOpen, Download, Trash2 } from "lucide-react";
+import { useWorkspaceSettings } from "../hooks/useWorkspaceSettings";
+import { api } from "../services/api";
 
 export default function Workspace() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
-  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string; citations?: Citation[]; confidence?: string; evidence?: any[] }>>(() => {
-    try {
-      const stored = localStorage.getItem("paperforge_current_chat_messages");
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
+  const { settings, updateSettings } = useWorkspaceSettings();
+  const selectedDocIds = settings.selected_document_ids || [];
+  const setSelectedDocIds = (ids: string[] | ((prev: string[]) => string[])) => {
+    if (typeof ids === "function") {
+      updateSettings({ selected_document_ids: ids(selectedDocIds) });
+    } else {
+      updateSettings({ selected_document_ids: ids });
     }
-  });
+  };
+
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string; citations?: Citation[]; confidence?: string; evidence?: any[] }>>([]);
+
+  // Load conversation history when active conversation changes
+  useEffect(() => {
+    if (settings.active_conversation_id) {
+      api.get(`/chat/conversations/${settings.active_conversation_id}`)
+        .then((res) => {
+          const mapped = res.data.map((m: any) => ({
+            role: m.role,
+            content: m.content,
+            citations: m.citations,
+            confidence: m.confidence || "High",
+            evidence: m.evidence || [],
+          }));
+          setMessages(mapped);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch conversation history:", err);
+        });
+    } else {
+      setMessages([]);
+    }
+  }, [settings.active_conversation_id]);
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   const [activePDF, setActivePDF] = useState<{
     documentId: string;
@@ -44,13 +70,13 @@ export default function Workspace() {
     snippet?: string;
   } | null>(null);
 
-  const { notes, updateNote, deleteNote, exportNotes } = useNotes();
+  const { notes, updateNote, deleteNote, exportNotes, fetchNotes } = useNotes();
   const [rightPanelTab, setRightPanelTab] = useState<"grounding" | "notes">("grounding");
 
-  // Sync messages with local storage
+  // Fetch notes from backend on mount
   useEffect(() => {
-    localStorage.setItem("paperforge_current_chat_messages", JSON.stringify(messages));
-  }, [messages]);
+    fetchNotes();
+  }, []);
 
   // Global keyboard shortcuts and Command Palette integration listeners
   useEffect(() => {
@@ -96,6 +122,7 @@ export default function Workspace() {
 
     const handleNewChat = () => {
       setMessages([]);
+      useWorkspaceSettings.getState().updateSettings({ active_conversation_id: "" });
     };
 
     const handleNoteSavedRedirect = () => {
@@ -159,6 +186,7 @@ export default function Workspace() {
       // Scoping query to selected documents using custom retrieval option metadata
       return chatService.sendMessage({
         query,
+        conversation_id: settings.active_conversation_id || undefined,
         conversation_history: history,
         retrieval_options: {
           document_ids: selectedDocIds, // Scopes retrieval only to selected document records!
@@ -177,6 +205,12 @@ export default function Workspace() {
           evidence: data.evidence_graph?.nodes ?? [],
         },
       ]);
+      
+      const convId = data.conversation_id || data.conversationId;
+      if (convId && convId !== settings.active_conversation_id) {
+        updateSettings({ active_conversation_id: convId });
+      }
+
       const truncatedQuery = queryText.length > 55 ? queryText.substring(0, 55) + "..." : queryText;
       addTimelineEvent("ask_question", `Asked: "${truncatedQuery}"`);
     },

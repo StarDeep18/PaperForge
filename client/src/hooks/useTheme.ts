@@ -1,25 +1,17 @@
-import { useEffect, useState } from "react";
+import { useWorkspaceSettings } from "./useWorkspaceSettings";
 
 export type Theme = "light" | "dark";
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "dark" || saved === "light") return saved;
-    // Default to dark theme for modern premium aesthetics
-    return "dark";
-  });
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
+  const { settings, updateSettings } = useWorkspaceSettings();
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+    const nextTheme = settings.theme === "light" ? "dark" : "light";
+    updateSettings({ theme: nextTheme });
   };
 
-  return { theme, toggleTheme };
+  return {
+    theme: (settings.theme as Theme) || "dark",
+    toggleTheme,
+  };
 }

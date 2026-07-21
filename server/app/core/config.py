@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "dev-secret-key-change-in-production"
+    firebase_credentials_path: str = ""
 
     # ── Server ───────────────────────────────────────────────────
     server_host: str = "0.0.0.0"

@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, AsyncMock
 
 from app.main import create_app
-from app.api.dependencies import get_rag_pipeline_service, get_upload_document_use_case, get_current_user_id
+from app.api.dependencies import get_rag_pipeline_service, get_upload_document_use_case, get_current_user_id, get_current_user
+from app.domain.models.user import User
 from app.domain.entities.document import Document, DocumentStatus, DocumentType, DocumentMetadata
 from app.domain.entities.rag import DocumentProcessingResult, RAGResponse
 from app.domain.entities.chunk import Chunk
@@ -50,12 +51,45 @@ def mock_upload_use_case():
     return MagicMock()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def setup_database():
+    import os
+    os.makedirs("./data", exist_ok=True)
+    from app.infrastructure.database.connection import engine
+    from app.infrastructure.database.models import Base
+    import asyncio
+    
+    async def init_db():
+        async with engine.begin() as conn:
+            # SQLite schema migration check
+            def migrate_schema(connection):
+                cursor = connection.connection.cursor()
+                cursor.execute("PRAGMA table_info(users)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if columns and "firebase_uid" not in columns:
+                    cursor.execute("ALTER TABLE users ADD COLUMN firebase_uid VARCHAR(128)")
+                    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_firebase_uid ON users (firebase_uid)")
+                    connection.connection.commit()
+            await conn.run_sync(migrate_schema)
+            await conn.run_sync(Base.metadata.create_all)
+            
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(init_db())
+    loop.close()
+
+
 @pytest.fixture(autouse=True)
 def apply_dependency_overrides(mock_pipeline_service, mock_upload_use_case):
     # Override composition root dependencies
     app.dependency_overrides[get_rag_pipeline_service] = lambda: mock_pipeline_service
     app.dependency_overrides[get_upload_document_use_case] = lambda: mock_upload_use_case
     app.dependency_overrides[get_current_user_id] = lambda: "user-123"
+    app.dependency_overrides[get_current_user] = lambda: User(
+        id="user-123",
+        firebase_uid="mock-uid-123",
+        email="test@example.com",
+        display_name="Test User",
+    )
     yield
     app.dependency_overrides.clear()
 

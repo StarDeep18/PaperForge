@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     Structured chat request payload for performing grounded question answering.
     """
     query: str = Field(..., description="The user's query/question.")
+    conversation_id: Optional[str] = Field(None, description="Optional conversation ID for history mapping.")
     workspace_id: Optional[str] = Field(None, description="Optional workspace ID scoping.")
     conversation_history: list[dict[str, str]] = Field(
         default_factory=list,

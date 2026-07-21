@@ -64,6 +64,8 @@ export interface EvidenceGraph {
 
 export interface ChatResponse {
   answer: string;
+  conversation_id?: string;
+  conversationId?: string;
   citations: Citation[];
   confidence: string;
   evidence_graph: EvidenceGraph;
@@ -72,6 +74,8 @@ export interface ChatResponse {
 
 export interface ChatRequest {
   query: string;
+  conversation_id?: string;
+  conversationId?: string;
   workspace_id?: string;
   conversation_history?: Array<{ role: "user" | "assistant"; content: string }>;
   retrieval_options?: Record<string, any>;

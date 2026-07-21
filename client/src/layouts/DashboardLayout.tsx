@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation, Link } from "react-router";
 import {
   LayoutDashboard,
   FileText,
@@ -11,14 +11,27 @@ import {
   ChevronDown,
   Database,
   BookOpen,
+  LogOut,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
+import { useAuth } from "../context/AuthProvider";
 import CommandPalette from "../components/CommandPalette";
 
 export default function DashboardLayout() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const { currentUser, userProfile, logout } = useAuth();
+
+  const getInitials = (name: string) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  };
 
   // Global keyboard listener for Ctrl+K
   useEffect(() => {
@@ -104,6 +117,30 @@ export default function DashboardLayout() {
             Plan limit: {storageLimit}
           </span>
         </div>
+
+        {/* User profile footer block */}
+        <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 bg-zinc-50/50 dark:bg-zinc-900/10 shrink-0">
+          <Link to="/profile" className="flex items-center gap-3 min-w-0 flex-1 hover:opacity-85 transition-opacity">
+            <div className="h-9 w-9 rounded-full bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center text-white dark:text-zinc-950 font-bold text-xs shrink-0 select-none">
+              {getInitials(userProfile?.display_name || currentUser?.displayName || currentUser?.email || "U")}
+            </div>
+            <div className="min-w-0 text-left">
+              <span className="block text-xs font-bold text-zinc-900 dark:text-zinc-50 truncate leading-none mb-1">
+                {userProfile?.display_name || currentUser?.displayName || "Research Fellow"}
+              </span>
+              <span className="block text-[10px] text-zinc-400 dark:text-zinc-500 truncate leading-none">
+                {currentUser?.email}
+              </span>
+            </div>
+          </Link>
+          <button
+            onClick={logout}
+            className="text-zinc-400 hover:text-red-500 p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer shrink-0"
+            aria-label="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </aside>
 
       {/* ── Main Area ───────────────────────────────────────────── */}
@@ -146,9 +183,9 @@ export default function DashboardLayout() {
             </button>
 
             {/* Profile Avatar */}
-            <div className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center font-semibold text-xs text-zinc-600 dark:text-zinc-300 select-none">
-              DS
-            </div>
+            <Link to="/profile" className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center font-semibold text-xs text-zinc-650 dark:text-zinc-300 select-none hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+              {getInitials(userProfile?.display_name || currentUser?.displayName || currentUser?.email || "U")}
+            </Link>
           </div>
         </header>
 

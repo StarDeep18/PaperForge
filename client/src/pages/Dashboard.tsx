@@ -19,19 +19,14 @@ import { documentService } from "../services/documentService";
 import { healthService } from "../services/healthService";
 import StatusBadge from "../components/StatusBadge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
-import { getTimelineEvents, TimelineEvent } from "../hooks/useTimeline";
+import { useTimeline } from "../hooks/useTimeline";
 
 export default function Dashboard() {
   const [rightTab, setRightTab] = useState<"timeline" | "health">("timeline");
-  const [timeline, setTimeline] = useState<TimelineEvent[]>(() => getTimelineEvents());
+  const { events: timeline, fetchEvents } = useTimeline();
 
-  // Listen to timeline updates reactively
   useEffect(() => {
-    const handleUpdate = () => {
-      setTimeline(getTimelineEvents());
-    };
-    window.addEventListener("paperforge-timeline-updated", handleUpdate);
-    return () => window.removeEventListener("paperforge-timeline-updated", handleUpdate);
+    fetchEvents();
   }, []);
 
   // Format timestamp helper

@@ -66,6 +66,7 @@ class ChatResponse(BaseModel):
     Grounding response returned after answering a query.
     """
     answer: str = Field(..., description="Synthesized answer text.")
+    conversation_id: Optional[str] = Field(None, description="The SQL database UUID string of the conversation.")
     citations: List[CitationResponse] = Field(default_factory=list, description="Grounding source citations.")
     confidence: str = Field(..., description="Overall confidence level (High, Medium, Low).")
     evidence_graph: EvidenceGraphResponse = Field(..., description="Statement-chunk evidence relationships graph.")

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
   BookOpen,
@@ -13,8 +13,12 @@ import {
 import { useNotes } from "../hooks/useNotes";
 
 export default function Notes() {
-  const { notes, updateNote, deleteNote, exportNotes } = useNotes();
+  const { notes, updateNote, deleteNote, exportNotes, fetchNotes } = useNotes();
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
 
   const filteredNotes = notes.filter(
     (note) =>
