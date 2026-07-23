@@ -12,9 +12,11 @@ from app.api.dependencies import CurrentUserId, get_rag_pipeline_service
 from app.application.services.rag_pipeline_service import RAGPipelineService
 from app.api.schemas.responses import DocumentResponse, UploadResponse, DocumentMetadataResponse, PaginatedDocumentResponse
 from app.domain.entities.document import Document
+from app.core.config import get_settings
 from app.api.limiter import limiter
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+settings = get_settings()
 
 
 def _map_document_to_response(doc: Document) -> DocumentResponse:
@@ -52,7 +54,7 @@ def _map_document_to_response(doc: Document) -> DocumentResponse:
     summary="Upload and process documents",
     description="Synchronously uploads, parses, chunks, embeds, and stores one or more research papers (PDF, DOCX, TXT) in the vector database.",
 )
-@limiter.limit("20/minute")
+@limiter.limit(settings.rate_limit_upload)
 async def upload_documents(
     user_id: CurrentUserId,
     request: Request,

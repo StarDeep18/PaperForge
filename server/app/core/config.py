@@ -26,7 +26,18 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "dev-secret-key-change-in-production"
+    
+    # ── Firebase Authentication Credentials ─────────────────────
     firebase_credentials_path: str = ""
+    firebase_project_id: str = ""
+    firebase_client_email: str = ""
+    firebase_private_key: str = ""
+    require_firebase_auth: bool = False
+
+    # ── Rate Limits ──────────────────────────────────────────────
+    rate_limit_upload: str = "10/minute"
+    rate_limit_chat: str = "30/minute"
+    rate_limit_note: str = "60/minute"
 
     # ── Server ───────────────────────────────────────────────────
     server_host: str = "0.0.0.0"
@@ -136,3 +147,34 @@ def get_settings() -> Settings:
     redundant environment variable parsing.
     """
     return Settings()
+
+
+def validate_environment(settings: Settings | None = None) -> None:
+    """
+    Validate application runtime environment configuration on startup.
+    Fails fast with explicit error logging if required configuration is missing.
+    """
+    if settings is None:
+        settings = get_settings()
+
+    missing_keys = []
+
+    # In production or when require_firebase_auth is true, validate Firebase credentials
+    if settings.is_production or settings.require_firebase_auth:
+        if not settings.firebase_credentials_path:
+            if not settings.firebase_project_id:
+                missing_keys.append("FIREBASE_PROJECT_ID")
+            if not settings.firebase_client_email:
+                missing_keys.append("FIREBASE_CLIENT_EMAIL")
+            if not settings.firebase_private_key:
+                missing_keys.append("FIREBASE_PRIVATE_KEY")
+
+    if missing_keys:
+        err_msg = (
+            "Application startup failed. Missing required environment variables: "
+            + ", ".join(missing_keys)
+        )
+        from app.core.logging import logger
+        logger.critical(f"❌ {err_msg}")
+        raise RuntimeError(err_msg)
+

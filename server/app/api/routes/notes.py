@@ -1,12 +1,15 @@
 from typing import Annotated, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from app.api.dependencies import CurrentUser, get_research_note_repo
 from app.domain.entities.research_note import ResearchNote
 from app.infrastructure.repositories.sqlite_research_note_repo import SQLiteResearchNoteRepository
+from app.core.config import get_settings
+from app.api.limiter import limiter
 
 router = APIRouter(prefix="/notes", tags=["Research Notes"])
+settings = get_settings()
 
 # ── Schemas ───────────────────────────────────────────────────────
 
@@ -59,8 +62,10 @@ async def list_notes(
     ]
 
 @router.post("", response_model=ResearchNoteResponseSchema, status_code=status.HTTP_201_CREATED)
+@limiter.limit(settings.rate_limit_note)
 async def create_note(
     payload: ResearchNoteCreateSchema,
+    request: Request,
     current_user: CurrentUser,
     repo: Annotated[SQLiteResearchNoteRepository, Depends(get_research_note_repo)],
 ):

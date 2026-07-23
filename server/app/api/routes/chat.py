@@ -19,9 +19,11 @@ from app.domain.entities.conversation import (
     Citation as DomCitation,
     ConversationScope,
 )
+from app.core.config import get_settings
 from app.api.limiter import limiter
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+settings = get_settings()
 
 @router.post(
     "",
@@ -29,7 +31,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
     summary="Send a message",
     description="Submits a user query to the RAG pipeline to generate a citation-aware grounded response.",
 )
-@limiter.limit("5/minute")
+@limiter.limit(settings.rate_limit_chat)
 async def send_message(
     chat_request: ChatRequest,
     request: Request,

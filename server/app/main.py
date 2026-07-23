@@ -43,23 +43,12 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────
     logger.info(f"🚀 Starting {settings.app_name} ({settings.app_env})")
 
+    from app.core.config import validate_environment
+    validate_environment(settings)
+
     # Ensure data directory exists
     settings.data_path
     settings.upload_path
-
-    # Run raw SQL to add firebase_uid column if missing (SQLite development migration)
-    async with engine.begin() as conn:
-        def migrate_schema(connection):
-            cursor = connection.connection.cursor()
-            cursor.execute("PRAGMA table_info(users)")
-            columns = [row[1] for row in cursor.fetchall()]
-            if columns and "firebase_uid" not in columns:
-                logger.info("Altering users table to add firebase_uid column...")
-                cursor.execute("ALTER TABLE users ADD COLUMN firebase_uid VARCHAR(128)")
-                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_firebase_uid ON users (firebase_uid)")
-                connection.connection.commit()
-                logger.info("users table altered successfully")
-        await conn.run_sync(migrate_schema)
 
     # Create database tables
     async with engine.begin() as conn:
@@ -147,9 +136,28 @@ def create_app() -> FastAPI:
     # ── Health Check ─────────────────────────────────────────
     @app.get("/health", tags=["System"])
     async def health_check():
+        import os
+        import firebase_admin
+        from sqlalchemy import text
+        from app.infrastructure.database.connection import async_session_factory
+
+        db_status = "disconnected"
+        try:
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+                db_status = "connected"
+        except Exception:
+            db_status = "degraded"
+
+        fb_status = "configured" if firebase_admin._apps else "mock_mode"
+        vector_status = "ready" if os.path.exists(settings.chroma_persist_dir) else "initializing"
+        overall = "healthy" if db_status == "connected" else "degraded"
+
         return {
-            "status": "healthy",
-            "app": settings.app_name,
+            "status": overall,
+            "database": db_status,
+            "firebase": fb_status,
+            "vector_store": vector_status,
             "version": settings.app_version,
         }
 
