@@ -1,0 +1,62 @@
+name: 🐛 Bug Report
+description: Report an issue or unexpected behavior in PaperForge
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us reproduce and fix it quickly.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug Summary
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Select the main area where the issue occurs.
+      options:
+        - Frontend UI (React / Vite)
+        - Backend API (FastAPI)
+        - Document Processing (PDF/DOCX)
+        - RAG Retrieval & Citations
+        - Vector Database (ChromaDB)
+        - Docker / Infrastructure
+        - Authentication (Firebase)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Stack Traces
+      description: Copy and paste any relevant terminal output, browser console logs, or backend error traces.
+      render: shell

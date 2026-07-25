@@ -1,5 +1,10 @@
 # PaperForge
 
+[![PaperForge CI](https://github.com/StarDeep18/PaperForge/actions/workflows/ci.yml/badge.svg)](https://github.com/StarDeep18/PaperForge/actions/workflows/ci.yml)
+[![Backend Tests](https://img.shields.io/badge/pytest-98%20passed-success?logo=pytest)](https://github.com/StarDeep18/PaperForge/actions)
+[![Docker Image](https://img.shields.io/badge/docker-multi--stage-blue?logo=docker)](https://github.com/StarDeep18/PaperForge/pkgs/container/paperforge-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **AI-Powered Research Workspace**
 
 PaperForge helps researchers, students, and professionals understand, organize, compare, and synthesize research papers using Retrieval-Augmented Generation (RAG).
@@ -300,4 +305,46 @@ The tests cover:
 - **Embedding Service**: batch processing, rate limiting, provider switching.
 - **Vector Store Service**: batch insertions, NaN vector validation, dimension validations, workspace/metadata scoping filters.
 - **Retrieval Service**: deduplication, parent chunk reconstruction, token limits, diagnostics.
+
+---
+
+## Continuous Integration & Release Engineering
+
+PaperForge enforces automated quality gates via GitHub Actions (`.github/workflows/ci.yml` and `.github/workflows/release.yml`).
+
+### CI Pipeline (`ci.yml`)
+
+Every push or pull request targeting `main` or `develop` automatically executes:
+1. **Backend QA**: Installs requirements, runs `pytest` test suite, generates coverage XML reports.
+2. **Frontend QA**: Installs npm dependencies, runs `oxlint` (`npm run lint`), checks TypeScript types (`npm run type-check`), compiles production Vite bundle (`npm run build`).
+3. **Docker QA**: Assembles `client` and `server` multi-stage Docker images, validates dev and prod Compose configs (`docker compose config`).
+4. **Security Audit**: Audits Python packages (`pip-audit`) and Node dependencies (`npm audit`).
+5. **PR Dependency Review**: Flags vulnerable package introductions prior to merging.
+
+### Release Pipeline (`release.yml`) & Semantic Versioning
+
+Releases follow **Semantic Versioning** (`vMAJOR.MINOR.PATCH`, e.g. `v1.0.0`):
+
+```bash
+# Tag a new release version
+git tag -a v1.0.0 -m "PaperForge v1.0.0 Production Release"
+git push origin v1.0.0
+```
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which:
+1. Reuses the full CI verification suite (`ci.yml`).
+2. Builds production client and server Docker images with version tags (`v1.0.0` and `latest`).
+3. Publishes images to GitHub Container Registry (`ghcr.io/StarDeep18/paperforge-client` and `ghcr.io/StarDeep18/paperforge-server`).
+4. Creates a GitHub Release draft with automatically generated release notes.
+
+### Recommended GitHub Branch Protection Setup
+
+To enforce quality gates on `main`:
+1. In GitHub Repository Settings -> **Branches** -> Add Branch Protection Rule for `main`.
+2. Check **Require a pull request before merging** (Minimum 1 approval).
+3. Check **Require status checks to pass before merging**:
+   - `Backend QA & Unit Tests`
+   - `Frontend QA & Production Build`
+   - `Docker Build & Compose Validation`
+4. Check **Require linear history** and **Block force pushes**.
 
