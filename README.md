@@ -351,3 +351,51 @@ To enforce quality gates on `main`:
    - `Docker Build & Compose Validation`
 4. Check **Require linear history** and **Block force pushes**.
 
+---
+
+## Production Cloud Deployment Infrastructure
+
+PaperForge supports a small-scale, production-ready SaaS deployment combining **Cloudflare Pages** (Frontend SPA), **Render Web Service** (Docker FastAPI Backend), and **Neon** (Serverless PostgreSQL).
+
+### Cloud Target Architecture
+
+```
+                                    User Browser / Client
+                                              │
+                                              ▼
+                         Cloudflare CDN & Pages (Frontend SPA)
+                          https://paperforge.app (Cache Assets)
+                                              │
+                                       (API Proxy / CORS)
+                                              ▼
+                           Render Web Service (FastAPI Backend)
+                                https://api.paperforge.app
+                                              │
+                             ┌────────────────┴────────────────┐
+                             ▼                                 ▼
+                 Neon Serverless PostgreSQL           Persistent Storage Mount
+             [Primary Source of Truth #1]            [Primary Source of Truth #2]
+             (Users, Collections, Docs, Notes)             (/app/uploads)
+                                                               │
+                                                               ▼
+                                                      Rebuildable Vector Store
+                                                         (/app/chroma_data)
+```
+
+### Key Operational Policies
+
+- **Sources of Truth vs Derived Data**: Neon PostgreSQL and uploaded documents (`/app/uploads`) are the primary Sources of Truth. Chroma vector indices (`/app/chroma_data`) are derived data that can be re-indexed from uploaded files if necessary.
+- **Safe Rollback Strategy**: Container images can be instantly rolled back in Render. Database downgrades (`alembic downgrade -1`) are reserved strictly for reversible schema changes, while Neon Point-in-Time Recovery (PITR) is used for complex data transformations.
+- **Cloudflare CDN Cache Policy**:
+  - `/assets/*` -> Immutable caching (`Cache-Control: public, max-age=31536000, immutable`).
+  - `/index.html` -> Revalidate (`Cache-Control: no-cache, no-store, must-revalidate`).
+  - `/api/*` -> Bypass cache (`Cache-Control: no-store, private`).
+
+### Deployment Documentation
+
+Detailed deployment guides and operational manuals are available in the `deploy/` directory:
+
+- 📄 [Production Cloud Deployment Guide](deploy/deployment.md) — Architecture, secrets, SSL/TLS, CDN, and health probes.
+- 📄 [Emergency Rollback Manual](deploy/rollback.md) — Container rollback steps, migration downgrade policies, and Neon PITR recovery.
+- 📋 [Production Deployment Checklist](deploy/checklist.md) — Pre-flight and post-flight verification checklist.
+- ⚙️ [Render IaC Blueprint](deploy/render.yaml) — Render Infrastructure-as-Code Blueprint specification.

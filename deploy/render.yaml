@@ -1,0 +1,50 @@
+# PaperForge Render Infrastructure-as-Code Blueprint
+services:
+  - type: web
+    name: paperforge-server
+    runtime: docker
+    dockerfilePath: docker/server.Dockerfile
+    dockerContext: .
+    plan: starter # 512MB RAM / 1 CPU
+    region: oregon # us-west
+    healthCheckPath: /health/ready
+
+    # Attached Persistent Volume for Uploads & ChromaDB Index
+    disk:
+      name: paperforge-storage
+      mountPath: /app/uploads
+      sizeGB: 5
+
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_FORMAT
+        value: json
+      - key: SERVER_HOST
+        value: 0.0.0.0
+      - key: SERVER_PORT
+        value: "8000"
+      - key: CHROMA_PERSIST_DIR
+        value: ./chroma_data
+      - key: UPLOAD_DIR
+        value: ./uploads
+
+      # Environment Secrets (Managed via Render Dashboard)
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: REQUIRE_FIREBASE_AUTH
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://paperforge.app,https://www.paperforge.app
