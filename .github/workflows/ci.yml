@@ -185,5 +185,5 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Dependency Review Action
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         continue-on-error: true
