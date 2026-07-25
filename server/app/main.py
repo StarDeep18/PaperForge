@@ -133,7 +133,44 @@ def create_app() -> FastAPI:
     # ── Routers ──────────────────────────────────────────────
     app.include_router(api_router)
 
-    # ── Health Check ─────────────────────────────────────────
+    # ── Health Probes (Kubernetes Compliant) ───────────────────
+    @app.get("/health/live", tags=["System"])
+    async def health_live():
+        """Liveness probe: verifies process is alive."""
+        return {"status": "live"}
+
+    @app.get("/health/ready", tags=["System"])
+    async def health_ready():
+        """Readiness probe: verifies DB and service readiness."""
+        import os
+        import firebase_admin
+        from sqlalchemy import text
+        from app.infrastructure.database.connection import async_session_factory
+
+        db_status = "disconnected"
+        try:
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+                db_status = "connected"
+        except Exception as e:
+            db_status = f"degraded: {e}"
+
+        fb_status = "configured" if firebase_admin._apps else "mock_mode"
+        vector_status = "ready" if os.path.exists(settings.chroma_persist_dir) else "initializing"
+        is_ready = db_status == "connected"
+        status_code = 200 if is_ready else 503
+
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": "ready" if is_ready else "not_ready",
+                "database": db_status,
+                "firebase": fb_status,
+                "vector_store": vector_status,
+                "version": settings.app_version,
+            },
+        )
+
     @app.get("/health", tags=["System"])
     async def health_check():
         import os

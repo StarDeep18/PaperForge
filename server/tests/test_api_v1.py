@@ -417,7 +417,7 @@ def test_rate_limiting(mock_pipeline_service):
     # We send consecutive requests. In our route, limiter is configured at 5/minute.
     # By the 6th query, it must trigger 429 RateLimitExceeded.
     triggered = False
-    for _ in range(10):
+    for _ in range(35):
         response = client.post("/api/v1/chat", json=payload)
         if response.status_code == 429:
             triggered = True

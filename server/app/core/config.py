@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "dev-secret-key-change-in-production"
+    log_format: str = "console"  # "console" or "json"
     
     # ── Firebase Authentication Credentials ─────────────────────
     firebase_credentials_path: str = ""

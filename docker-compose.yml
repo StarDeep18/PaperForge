@@ -1,37 +1,154 @@
 services:
-  server:
+  # =========================================================
+  # DEVELOPMENT PROFILE (`docker compose --profile dev up`)
+  # =========================================================
+  client:
+    profiles: ["dev"]
+    container_name: paperforge-client-dev
     build:
-      context: ./server
-      dockerfile: ../docker/Dockerfile.server
+      context: .
+      dockerfile: docker/client.Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  server:
+    profiles: ["dev"]
+    container_name: paperforge-server-dev
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./server:/app
       - server_data:/app/data
       - server_uploads:/app/uploads
       - server_chroma:/app/chroma_data
     env_file:
       - .env
     environment:
+      - APP_ENV=development
+      - DEBUG=true
+      - LOG_FORMAT=console
       - DATABASE_URL=sqlite+aiosqlite:///./data/paperforge.db
-    restart: unless-stopped
-
-  client:
-    build:
-      context: ./client
-      dockerfile: ../docker/Dockerfile.client
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./client:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:8000
+      - CHROMA_PERSIST_DIR=./chroma_data
+      - UPLOAD_DIR=./uploads
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
     depends_on:
-      - server
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =========================================================
+  # PRODUCTION PROFILE (`docker compose --profile prod up`)
+  # =========================================================
+  client-prod:
+    profiles: ["prod"]
+    container_name: paperforge-client-prod
+    build:
+      context: .
+      dockerfile: docker/client.Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      server-prod:
+        condition: service_healthy
     restart: unless-stopped
 
+  server-prod:
+    profiles: ["prod"]
+    container_name: paperforge-server-prod
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    volumes:
+      - server_uploads:/app/uploads
+      - server_chroma:/app/chroma_data
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+      - DEBUG=false
+      - LOG_FORMAT=json
+      - DATABASE_URL=postgresql+asyncpg://paperforge:paperforge_pass@postgres:5432/paperforge_db
+      - CHROMA_PERSIST_DIR=./chroma_data
+      - UPLOAD_DIR=./uploads
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  postgres:
+    profiles: ["prod"]
+    image: postgres:16.4-alpine
+    container_name: paperforge-postgres
+    environment:
+      - POSTGRES_USER=paperforge
+      - POSTGRES_PASSWORD=paperforge_pass
+      - POSTGRES_DB=paperforge_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperforge -d paperforge_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =========================================================
+  # SHARED VECTOR DATABASE (Used by both Dev and Prod)
+  # =========================================================
+  chromadb:
+    profiles: ["dev", "prod"]
+    image: chromadb/chroma:0.6.3
+    container_name: paperforge-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - server_chroma:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# =========================================================
+# PERSISTENT VOLUMES
+# =========================================================
 volumes:
   server_data:
+    name: paperforge_server_data
   server_uploads:
+    name: paperforge_server_uploads
   server_chroma:
+    name: paperforge_server_chroma
+  postgres_data:
+    name: paperforge_postgres_data

@@ -39,7 +39,9 @@ def setup_logging() -> logging.Logger:
         handler = logging.StreamHandler(sys.stdout)
         handler.addFilter(RequestIDFilter())
 
-        if settings.is_production:
+        use_json = getattr(settings, "log_format", "console").lower() == "json" or settings.is_production
+
+        if use_json:
             formatter = logging.Formatter(
                 '{"time":"%(asctime)s","level":"%(levelname)s",'
                 '"request_id":"%(request_id)s","module":"%(module)s",'

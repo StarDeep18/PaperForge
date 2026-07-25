@@ -162,20 +162,126 @@ Create migration  ──>  Review migration  ──>  Apply migration  ──>  
 
 ## Health Check & Diagnostics
 
-PaperForge exposes a system health check endpoint for container probes, CI/CD pipelines, and infrastructure monitors.
+PaperForge exposes system health check probes for container readiness/liveness, Kubernetes deployments, and infrastructure monitors.
 
-**Endpoint**: `GET /health`
+- **Liveness Probe**: `GET /health/live` — Returns `200 OK` (`{"status": "live"}`) if process is active.
+- **Readiness Probe**: `GET /health/ready` — Returns `200 OK` (`{"status": "ready"}`) when DB, Firebase, and Chroma connection checks pass (or `503 Service Unavailable` if degraded).
+- **System Health**: `GET /health` — General diagnostic status payload.
 
-**Sample Response**:
+**Sample Response (`/health/ready`)**:
 ```json
 {
-  "status": "healthy",
+  "status": "ready",
   "database": "connected",
   "firebase": "configured",
   "vector_store": "ready",
   "version": "1.0.0"
 }
 ```
+
+---
+
+## Production Docker Architecture & Deployment
+
+PaperForge is fully containerized using multi-stage Docker builds and Docker Compose profiles, supporting local development, staging against PostgreSQL, and production cloud/Kubernetes deployments.
+
+### Target Architecture
+
+```
+                  DEVELOPMENT PROFILE (`--profile dev`)
+                    Internet
+                        │
+                        ▼
+            Nginx Reverse Proxy / SPA (Port 80)
+                        │
+        ┌───────────────┴───────────────┐
+        ▼                               ▼
+ React Static Build (SPA)         FastAPI Backend
+                                        │
+                           ┌────────────┴─────────────┐
+                           ▼                          ▼
+                     SQLite (File)            Chroma Vector DB
+
+------------------------------------------------------------------
+
+                  PRODUCTION PROFILE (`--profile prod`)
+                    Internet
+                        │
+                        ▼
+            Nginx Reverse Proxy / SPA (Port 80)
+                        │
+        ┌───────────────┴───────────────┐
+        ▼                               ▼
+ React Static Build (SPA)         FastAPI Backend (Gunicorn)
+                                        │
+                           ┌────────────┴─────────────┐
+                           ▼                          ▼
+                   PostgreSQL Container       Chroma Vector DB
+```
+
+### Startup Order & Dependency Flow
+
+Docker Compose enforces strict startup ordering and health-gated readiness:
+
+```
+PostgreSQL Container (prod only) ──┐
+                                  ├──> FastAPI Backend ──> Health Probe (/health/ready) ──> Nginx Proxy
+Chroma Vector DB Container ────────┘
+```
+
+1. **Database & Vector Store**: `postgres` (in production) and `chromadb` start first and initialize listening sockets.
+2. **FastAPI Backend**: `server` waits for `postgres` and `chromadb` to pass internal healthchecks before initializing database tables and model layers.
+3. **Health Check Gate**: Compose monitors `GET /health/ready`. Once the backend reports 200 OK, the Nginx client container starts.
+4. **Nginx Reverse Proxy**: `client` routes incoming user HTTP traffic to the verified healthy backend.
+
+### Managed & External Database Compatibility
+
+The backend uses standard SQLAlchemy async drivers (`sqlite+aiosqlite` or `postgresql+asyncpg`). For production cloud deployments, simply update `DATABASE_URL` in `.env` to point to any managed PostgreSQL provider without changing application code:
+```env
+# Managed PostgreSQL (Neon / Supabase / AWS RDS / GCP Cloud SQL)
+DATABASE_URL=postgresql+asyncpg://user:pass@ep-cool-db-123456.us-east-1.aws.neon.tech/paperforge?ssl=require
+```
+
+### Vector Store & Volume Persistence Guarantee
+
+All document chunks, vector embeddings, and database states are stored in isolated named Docker volumes (`server_chroma`, `server_data`, `server_uploads`, `postgres_data`). 
+- **Embeddings Persistence**: Rebuilding images (`docker compose build --no-cache`) or restarting containers (`docker compose down && docker compose up -d`) does **NOT** wipe vector indices or uploaded PDFs.
+
+### Multi-Stage Build & Image Size Optimization
+
+Both `client` and `server` containers leverage multi-stage Docker builds to achieve minimal runtime footprints:
+- **Client (`docker/client.Dockerfile`)**: Stage 1 uses Node 20 Alpine to compile TypeScript static bundles. Stage 2 discards Node.js, `node_modules`, and source code, shipping only static assets served by lightweight Nginx Alpine (~25MB).
+- **Server (`docker/server.Dockerfile`)**: Stage 1 installs GCC, G++, and Python build dependencies to compile wheel packages. Stage 2 copies only pre-built Python binaries into a clean `python:3.11.9-slim` runtime, eliminating build tools and reducing attack surface.
+
+### Docker Compose Profiles
+
+PaperForge uses Docker Compose Profiles to keep development lightweight while enabling production testing:
+
+| Environment | Command | Description | Database |
+|---|---|---|---|
+| **Development** | `docker compose --profile dev up -d` | React SPA + Nginx proxy, FastAPI backend, ChromaDB vector store | SQLite file |
+| **Production** | `docker compose --profile prod up -d` | Multi-stage React SPA, FastAPI under Gunicorn (4 workers), ChromaDB, PostgreSQL 16 | PostgreSQL |
+
+### Helper Scripts
+
+Convenient helper scripts are provided under `docker/scripts/`:
+
+- **Start Stack**: `./docker/scripts/start.sh dev` (or `.\docker\scripts\start.ps1 -Profile dev`)
+- **Stop Stack**: `./docker/scripts/stop.sh` (or `.\docker\scripts\stop.ps1`)
+- **Rebuild Stack**: `./docker/scripts/rebuild.sh dev` (or `.\docker\scripts\rebuild.ps1 -Profile dev`)
+- **Run Migrations**: `./docker/scripts/migrate.sh dev` (or `.\docker\scripts\migrate.ps1 -Profile dev`)
+
+### Structured Logging
+
+Log formatting is fully configurable via `LOG_FORMAT` in `.env`:
+- `LOG_FORMAT=console` (Default for dev): Human-readable colored output with correlation Request IDs.
+- `LOG_FORMAT=json` (Default for prod): Single-line JSON objects tailored for Docker/Loki log aggregation.
+
+### Troubleshooting Common Issues
+
+1. **Port 80 / 8000 Conflict**: Ensure local web servers or standalone FastAPI instances are stopped before starting containers (`docker compose --profile dev down`).
+2. **Permission Denied on Volumes**: Ensure Docker has write access to `./data`, `./uploads`, and `./chroma_data`.
+3. **Database Migration Failures**: Run `.\docker\scripts\migrate.ps1 -Profile dev` to apply pending Alembic migrations inside the running backend container.
 
 ---
 

@@ -1,0 +1,33 @@
+# Dependencies & Build artifacts
+node_modules
+client/node_modules
+client/dist
+server/.venv
+server/venv
+.venv
+venv
+
+# Python Cache & Coverage
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov
+coverage.xml
+
+# Git & IDE
+.git
+.gitignore
+.idea
+.vscode
+*.swp
+
+# Persistent Data & Secrets
+data/*.db
+uploads/*
+chroma_data/*
+.env
+.env.*
+!.env.example
