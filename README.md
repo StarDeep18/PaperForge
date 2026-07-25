@@ -1,6 +1,7 @@
 # PaperForge
 
 [![PaperForge CI](https://github.com/StarDeep18/PaperForge/actions/workflows/ci.yml/badge.svg)](https://github.com/StarDeep18/PaperForge/actions/workflows/ci.yml)
+[![CodeQL Security Scan](https://github.com/StarDeep18/PaperForge/actions/workflows/codeql.yml/badge.svg)](https://github.com/StarDeep18/PaperForge/actions/workflows/codeql.yml)
 [![Backend Tests](https://img.shields.io/badge/pytest-98%20passed-success?logo=pytest)](https://github.com/StarDeep18/PaperForge/actions)
 [![Docker Image](https://img.shields.io/badge/docker-multi--stage-blue?logo=docker)](https://github.com/StarDeep18/PaperForge/pkgs/container/paperforge-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -319,7 +320,9 @@ Every push or pull request targeting `main` or `develop` automatically executes:
 2. **Frontend QA**: Installs npm dependencies, runs `oxlint` (`npm run lint`), checks TypeScript types (`npm run type-check`), compiles production Vite bundle (`npm run build`).
 3. **Docker QA**: Assembles `client` and `server` multi-stage Docker images, validates dev and prod Compose configs (`docker compose config`).
 4. **Security Audit**: Audits Python packages (`pip-audit`) and Node dependencies (`npm audit`).
-5. **PR Dependency Review**: Flags vulnerable package introductions prior to merging.
+5. **CodeQL SAST Scan**: Performs static application security testing (`codeql.yml`) across Python and TypeScript.
+6. **Dependabot Automated Updates**: Weekly automated dependency bump PRs (`dependabot.yml`) for `pip`, `npm`, and `github-actions`.
+7. **PR Dependency Review**: Flags vulnerable package introductions prior to merging.
 
 ### Release Pipeline (`release.yml`) & Semantic Versioning
 
