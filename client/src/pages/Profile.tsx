@@ -7,7 +7,7 @@ import { User, Mail, Calendar, FileText, BookOpen, Clock, Activity, HardDrive, M
 interface ProfileStatistics {
   workspace_name: string;
   storage_used_bytes: number;
-  storage_used_formatted: str;
+  storage_used_formatted: string;
   documents_count: number;
   questions_asked_count: number;
   notes_saved_count: number;
