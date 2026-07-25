@@ -111,7 +111,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Client Docker Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/client.Dockerfile
@@ -121,7 +121,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build Server Docker Image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/server.Dockerfile
