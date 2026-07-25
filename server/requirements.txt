@@ -46,7 +46,7 @@ httpx>=0.28.0
 slowapi>=0.1.9
 
 # Telemetry
-prometheus-fastapi-instrumentator>=7.0.0
+prometheus-fastapi-instrumentator>=8.0.2
 
 # Firebase Auth
 firebase-admin>=6.5.0,<7.0.0
