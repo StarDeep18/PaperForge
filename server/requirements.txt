@@ -3,7 +3,7 @@
 # ========================
 
 # Web Framework
-fastapi>=0.115.0,<1.0.0
+fastapi>=0.140.0,<1.0.0
 uvicorn[standard]>=0.34.0,<1.0.0
 gunicorn>=23.0.0
 python-multipart>=0.0.18
